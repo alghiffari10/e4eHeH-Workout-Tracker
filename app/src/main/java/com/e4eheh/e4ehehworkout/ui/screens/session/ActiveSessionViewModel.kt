@@ -20,6 +20,8 @@ import com.e4eheh.e4ehehworkout.domain.model.WeightUnit
 import com.e4eheh.e4ehehworkout.domain.repository.ExerciseRepository
 import com.e4eheh.e4ehehworkout.domain.repository.SessionRepository
 import com.e4eheh.e4ehehworkout.domain.repository.UserPreferencesRepository
+import com.e4eheh.e4ehehworkout.domain.timer.RestTimerController
+import com.e4eheh.e4ehehworkout.domain.timer.RestTimerState
 import com.e4eheh.e4ehehworkout.domain.unit.UnitConverter
 import com.e4eheh.e4ehehworkout.ui.components.InlineExerciseDraft
 import java.time.Clock
@@ -217,6 +219,8 @@ data class ActiveSessionUiState(
     val elapsedSeconds: Long = 0L,
     val weightUnit: WeightUnit = WeightUnit.KG,
     val distanceUnit: DistanceUnit = DistanceUnit.KM,
+    val defaultRestTimerSeconds: Int = UserPreferences.DEFAULT_REST_TIMER_SECONDS,
+    val restTimer: RestTimerState = RestTimerState(),
     val draft: ActiveSessionDraft = ActiveSessionDraft(),
     val availableExercises: List<Exercise> = emptyList(),
     val showExercisePicker: Boolean = false,
@@ -260,6 +264,8 @@ sealed interface ActiveSessionAction {
     data class UpdateSetRounds(val exerciseIndex: Int, val setIndex: Int, val text: String) : ActiveSessionAction
 
     data object RefreshTimer : ActiveSessionAction
+    data class AdjustRestTimer(val deltaSeconds: Int) : ActiveSessionAction
+    data object SkipRestTimer : ActiveSessionAction
     data object FinishSession : ActiveSessionAction
 }
 
@@ -273,6 +279,7 @@ class ActiveSessionViewModel(
 ) : ViewModel() {
     private val persistMutex = Mutex()
     private var lastPersistedInput: SessionDraftInput? = null
+    private val restTimerController = RestTimerController(clock)
     private val internalState = MutableStateFlow(ActiveSessionUiState(sessionId = sessionId))
 
     val uiState: StateFlow<ActiveSessionUiState> = combine(
@@ -303,11 +310,13 @@ class ActiveSessionViewModel(
                         current.copy(
                             weightUnit = updatedPrefs.weightUnit,
                             distanceUnit = updatedPrefs.distanceUnit,
+                            defaultRestTimerSeconds = updatedPrefs.defaultRestTimerSeconds,
                         )
                     } else {
                         current.copy(
                             weightUnit = updatedPrefs.weightUnit,
                             distanceUnit = updatedPrefs.distanceUnit,
+                            defaultRestTimerSeconds = updatedPrefs.defaultRestTimerSeconds,
                             draft = current.draft.reformatForUnits(
                                 updatedPrefs.weightUnit,
                                 updatedPrefs.distanceUnit,
@@ -415,10 +424,28 @@ class ActiveSessionViewModel(
             is ActiveSessionAction.RemoveSet ->
                 mutateDraftAndAutoSave { it.removeSet(action.exerciseIndex, action.setIndex) }
 
-            is ActiveSessionAction.ToggleSetCompleted ->
-                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) { _, set ->
-                    set.copy(isCompleted = !set.isCompleted)
+            is ActiveSessionAction.ToggleSetCompleted -> {
+                mutateStateAndAutoSave { state ->
+                    val targetSet = state.draft.exercises
+                        .getOrNull(action.exerciseIndex)
+                        ?.sets
+                        ?.getOrNull(action.setIndex)
+                        ?: return@mutateStateAndAutoSave state
+                    val becomingCompleted = !targetSet.isCompleted
+                    val updatedDraft = state.draft.updateSet(action.exerciseIndex, action.setIndex) { set ->
+                        set.copy(isCompleted = !set.isCompleted)
+                    }
+                    val nextRestTimer = if (becomingCompleted) {
+                        restTimerController.start(state.restTimer, state.defaultRestTimerSeconds)
+                    } else {
+                        state.restTimer
+                    }
+                    state.copy(
+                        draft = updatedDraft,
+                        restTimer = nextRestTimer,
+                    )
                 }
+            }
 
             is ActiveSessionAction.ToggleSetWarmup ->
                 mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) { _, set ->
@@ -475,7 +502,37 @@ class ActiveSessionViewModel(
                     if (!state.isLoaded || state.isCompleted) {
                         state
                     } else {
-                        state.copy(elapsedSeconds = computeElapsedSeconds(state.startedAt))
+                        state.copy(
+                            elapsedSeconds = computeElapsedSeconds(state.startedAt),
+                            restTimer = restTimerController.tick(state.restTimer),
+                        )
+                    }
+                }
+            }
+
+            is ActiveSessionAction.AdjustRestTimer -> {
+                if (!internalState.value.isEditable) return
+                internalState.update { state ->
+                    if (!state.isEditable) {
+                        state
+                    } else {
+                        state.copy(
+                            restTimer = restTimerController.adjustBy(
+                                state.restTimer,
+                                action.deltaSeconds,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            ActiveSessionAction.SkipRestTimer -> {
+                if (!internalState.value.isEditable) return
+                internalState.update { state ->
+                    if (!state.isEditable) {
+                        state
+                    } else {
+                        state.copy(restTimer = restTimerController.skip(state.restTimer))
                     }
                 }
             }
@@ -621,13 +678,20 @@ class ActiveSessionViewModel(
                                 isFinishing = false,
                                 isCompleted = true,
                                 elapsedSeconds = completed.durationSeconds,
+                                restTimer = restTimerController.skip(current.restTimer),
                                 draft = completed.toDraft(current.weightUnit, current.distanceUnit),
                             )
                         }
                     } catch (_: NoSuchElementException) {
                         internalState.update { it.copy(isFinishing = false, isMissing = true) }
                     } catch (_: IllegalStateException) {
-                        internalState.update { it.copy(isFinishing = false, isCompleted = true) }
+                        internalState.update { current ->
+                            current.copy(
+                                isFinishing = false,
+                                isCompleted = true,
+                                restTimer = restTimerController.skip(current.restTimer),
+                            )
+                        }
                     }
                 }
             }
@@ -645,6 +709,7 @@ class ActiveSessionViewModel(
                 isMissing = true,
                 weightUnit = prefs.weightUnit,
                 distanceUnit = prefs.distanceUnit,
+                defaultRestTimerSeconds = prefs.defaultRestTimerSeconds,
             )
         }
         val completed = session.status == SessionStatus.COMPLETED
@@ -661,6 +726,7 @@ class ActiveSessionViewModel(
             elapsedSeconds = elapsed,
             weightUnit = prefs.weightUnit,
             distanceUnit = prefs.distanceUnit,
+            defaultRestTimerSeconds = prefs.defaultRestTimerSeconds,
             draft = session.toDraft(prefs.weightUnit, prefs.distanceUnit),
         )
     }

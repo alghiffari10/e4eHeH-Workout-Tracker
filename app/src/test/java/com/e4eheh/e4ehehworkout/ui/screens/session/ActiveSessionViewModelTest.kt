@@ -15,6 +15,7 @@ import com.e4eheh.e4ehehworkout.domain.model.SyncStatus
 import com.e4eheh.e4ehehworkout.domain.model.TrackingMode
 import com.e4eheh.e4ehehworkout.domain.model.WeightUnit
 import com.e4eheh.e4ehehworkout.domain.repository.ExerciseRepository
+import com.e4eheh.e4ehehworkout.domain.timer.RestTimerStatus
 import com.e4eheh.e4ehehworkout.domain.unit.UnitConverter
 import com.e4eheh.e4ehehworkout.testing.FakeClock
 import java.time.Duration
@@ -425,6 +426,111 @@ class ActiveSessionViewModelTest {
             assertEquals("10", metricState.draft.exercises[1].sets.single().distanceText)
             assertEquals(20.0, metricState.draft.exercises[0].sets.single().loadKg!!, 1e-6)
             assertEquals(10.0, metricState.draft.exercises[1].sets.single().distanceKm!!, 1e-6)
+
+            collector.cancel()
+        }
+
+    @Test
+    fun checkOffSet_autoStartsConfiguredRestTimer_uncheckDoesNot_andTicksAndCompletesDeterministically() =
+        runTest(testDispatcher) {
+            userPreferencesRepository.updateDefaultRestTimerSeconds(60)
+            val pullup = exerciseRepository.create(
+                ExerciseInput("Pull-up", Discipline.CALISTHENICS, TrackingMode.REPS_AND_LOAD)
+            )
+            val session = sessionRepository.createLiveBlankSession()
+            val viewModel = createViewModel(session.id)
+            val collector = backgroundScope.launch { viewModel.uiState.collect {} }
+            advanceUntilIdle()
+
+            viewModel.onAction(ActiveSessionAction.OpenExercisePicker)
+            viewModel.onAction(ActiveSessionAction.AddExistingExercise(pullup.id))
+            viewModel.onAction(ActiveSessionAction.AddSet(0))
+
+            assertEquals(RestTimerStatus.IDLE, viewModel.uiState.value.restTimer.status)
+            assertEquals(60, viewModel.uiState.value.defaultRestTimerSeconds)
+
+            // Checking off Set 0 starts the Rest Timer at 60s
+            viewModel.onAction(ActiveSessionAction.ToggleSetCompleted(0, 0))
+            assertEquals(RestTimerStatus.RUNNING, viewModel.uiState.value.restTimer.status)
+            assertEquals(60, viewModel.uiState.value.restTimer.remainingSeconds)
+            assertEquals(0L, viewModel.uiState.value.restTimer.completionEventId)
+
+            // Unchecking Set 0 does not restart or clear the running Rest Timer
+            clock.advanceBy(Duration.ofSeconds(15))
+            viewModel.onAction(ActiveSessionAction.RefreshTimer)
+            assertEquals(45, viewModel.uiState.value.restTimer.remainingSeconds)
+
+            viewModel.onAction(ActiveSessionAction.ToggleSetCompleted(0, 0))
+            assertEquals(RestTimerStatus.RUNNING, viewModel.uiState.value.restTimer.status)
+            assertEquals(45, viewModel.uiState.value.restTimer.remainingSeconds)
+
+            // Checking off Set 1 restarts the Rest Timer from now at 60s
+            viewModel.onAction(ActiveSessionAction.ToggleSetCompleted(0, 1))
+            assertEquals(RestTimerStatus.RUNNING, viewModel.uiState.value.restTimer.status)
+            assertEquals(60, viewModel.uiState.value.restTimer.remainingSeconds)
+
+            // Advancing clock to expiry and refreshing completes once
+            clock.advanceBy(Duration.ofSeconds(60))
+            viewModel.onAction(ActiveSessionAction.RefreshTimer)
+            assertEquals(RestTimerStatus.COMPLETED, viewModel.uiState.value.restTimer.status)
+            assertEquals(0, viewModel.uiState.value.restTimer.remainingSeconds)
+            assertEquals(1L, viewModel.uiState.value.restTimer.completionEventId)
+
+            collector.cancel()
+        }
+
+    @Test
+    fun restTimerControls_adjustMinus15ClampPlus15SkipAndFinishSession_workWithoutCorruptingDraft() =
+        runTest(testDispatcher) {
+            userPreferencesRepository.updateDefaultRestTimerSeconds(30)
+            val dip = exerciseRepository.create(
+                ExerciseInput("Dip", Discipline.CALISTHENICS, TrackingMode.REPS_AND_LOAD)
+            )
+            val session = sessionRepository.createLiveBlankSession()
+            val viewModel = createViewModel(session.id)
+            val collector = backgroundScope.launch { viewModel.uiState.collect {} }
+            advanceUntilIdle()
+
+            viewModel.onAction(ActiveSessionAction.OpenExercisePicker)
+            viewModel.onAction(ActiveSessionAction.AddExistingExercise(dip.id))
+            viewModel.onAction(ActiveSessionAction.ToggleSetCompleted(0, 0))
+            assertEquals(30, viewModel.uiState.value.restTimer.remainingSeconds)
+
+            viewModel.onAction(ActiveSessionAction.AdjustRestTimer(15))
+            assertEquals(45, viewModel.uiState.value.restTimer.remainingSeconds)
+
+            viewModel.onAction(ActiveSessionAction.AdjustRestTimer(-15))
+            assertEquals(30, viewModel.uiState.value.restTimer.remainingSeconds)
+
+            // Skip hides the timer without emitting completion
+            viewModel.onAction(ActiveSessionAction.SkipRestTimer)
+            assertEquals(RestTimerStatus.IDLE, viewModel.uiState.value.restTimer.status)
+            assertEquals(0L, viewModel.uiState.value.restTimer.completionEventId)
+
+            // Restart by unchecking then re-checking
+            viewModel.onAction(ActiveSessionAction.ToggleSetCompleted(0, 0))
+            viewModel.onAction(ActiveSessionAction.ToggleSetCompleted(0, 0))
+            assertEquals(30, viewModel.uiState.value.restTimer.remainingSeconds)
+
+            // Advance 20s -> 10s remaining, then -15s clamps to 00:00 and triggers completion
+            clock.advanceBy(Duration.ofSeconds(20))
+            viewModel.onAction(ActiveSessionAction.RefreshTimer)
+            assertEquals(10, viewModel.uiState.value.restTimer.remainingSeconds)
+
+            viewModel.onAction(ActiveSessionAction.AdjustRestTimer(-15))
+            assertEquals(RestTimerStatus.COMPLETED, viewModel.uiState.value.restTimer.status)
+            assertEquals(0, viewModel.uiState.value.restTimer.remainingSeconds)
+            assertEquals(1L, viewModel.uiState.value.restTimer.completionEventId)
+
+            // +15s from COMPLETED resumes for 15s, then FinishSession clears timer to IDLE
+            viewModel.onAction(ActiveSessionAction.AdjustRestTimer(15))
+            assertEquals(RestTimerStatus.RUNNING, viewModel.uiState.value.restTimer.status)
+            assertEquals(15, viewModel.uiState.value.restTimer.remainingSeconds)
+
+            viewModel.onAction(ActiveSessionAction.FinishSession)
+            advanceUntilIdle()
+            assertTrue(viewModel.uiState.value.isCompleted)
+            assertEquals(RestTimerStatus.IDLE, viewModel.uiState.value.restTimer.status)
 
             collector.cancel()
         }

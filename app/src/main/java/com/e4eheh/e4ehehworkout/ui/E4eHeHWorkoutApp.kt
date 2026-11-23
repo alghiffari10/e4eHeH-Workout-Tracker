@@ -48,6 +48,7 @@ import com.e4eheh.e4ehehworkout.ui.components.ArkhamSecondaryButton
 import com.e4eheh.e4ehehworkout.ui.navigation.ActiveSessionRoute
 import com.e4eheh.e4ehehworkout.ui.navigation.TopLevelTab
 import com.e4eheh.e4ehehworkout.ui.screens.home.HomeScreen
+import com.e4eheh.e4ehehworkout.ui.screens.home.HomeViewModel
 import com.e4eheh.e4ehehworkout.ui.screens.profile.ProfileScreen
 import com.e4eheh.e4ehehworkout.ui.screens.profile.ProfileViewModel
 import com.e4eheh.e4ehehworkout.ui.screens.progress.ProgressScreen
@@ -70,9 +71,6 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
         val currentRoute = navBackStackEntry?.destination?.route
         val showBottomBar = currentRoute == null ||
             TopLevelTab.entries.any { it.route == currentRoute }
-        val exercises by appContainer.exerciseRepository
-            .observeActiveExercises()
-            .collectAsStateWithLifecycle(initialValue = emptyList())
         var showQuickActionSheet by rememberSaveable { mutableStateOf(false) }
         val appShellViewModel: AppShellViewModel = viewModel(
             factory = AppShellViewModel.Factory(appContainer.sessionRepository),
@@ -125,8 +123,22 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
                     popExitTransition = { fadeOut(tween(ArkhamMotion.STATE_MS)) },
                 ) {
                     composable(TopLevelTab.HOME.route) {
+                        val viewModel: HomeViewModel = viewModel(
+                            factory = HomeViewModel.Factory(
+                                exerciseRepository = appContainer.exerciseRepository,
+                                sessionRepository = appContainer.sessionRepository,
+                                clock = appContainer.clock,
+                            ),
+                        )
+                        val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                         HomeScreen(
-                            exerciseCount = exercises.size,
+                            uiState = uiState,
+                            onAction = viewModel::onAction,
+                            onResumeSession = { sessionId ->
+                                navController.navigate(ActiveSessionRoute.createRoute(sessionId)) {
+                                    launchSingleTop = true
+                                }
+                            },
                             onNavigateToWorkout = { navigateToTab(TopLevelTab.WORKOUT) },
                         )
                     }

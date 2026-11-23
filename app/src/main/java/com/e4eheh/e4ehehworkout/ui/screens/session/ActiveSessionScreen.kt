@@ -2,6 +2,7 @@ package com.e4eheh.e4ehehworkout.ui.screens.session
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,9 +30,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
@@ -39,7 +46,9 @@ import androidx.compose.ui.unit.dp
 import com.e4eheh.e4ehehworkout.domain.model.Discipline
 import com.e4eheh.e4ehehworkout.domain.model.DistanceUnit
 import com.e4eheh.e4ehehworkout.domain.model.TrackingMode
+import com.e4eheh.e4ehehworkout.domain.model.UserPreferences
 import com.e4eheh.e4ehehworkout.domain.model.WeightUnit
+import com.e4eheh.e4ehehworkout.domain.timer.RestTimerState
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamChipSelectorSection
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamExercisePickerView
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamHudBadge
@@ -79,6 +88,18 @@ fun ActiveSessionScreen(
     LaunchedEffect(uiState.isCompleted) {
         if (uiState.isCompleted) {
             onExitSession()
+        }
+    }
+
+    val hapticFeedback = LocalHapticFeedback.current
+    var lastHandledCompletionEventId by rememberSaveable(uiState.sessionId) {
+        mutableLongStateOf(uiState.restTimer.completionEventId)
+    }
+    LaunchedEffect(uiState.restTimer.completionEventId) {
+        val eventId = uiState.restTimer.completionEventId
+        if (eventId > lastHandledCompletionEventId) {
+            lastHandledCompletionEventId = eventId
+            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
         }
     }
 
@@ -220,6 +241,15 @@ fun ActiveSessionScreen(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        if (uiState.restTimer.isVisible) {
+            CompactRestTimerBar(
+                restTimer = uiState.restTimer,
+                controlsEnabled = uiState.isEditable,
+                onAdjust = { onAction(ActiveSessionAction.AdjustRestTimer(it)) },
+                onSkip = { onAction(ActiveSessionAction.SkipRestTimer) },
+            )
         }
 
         Surface(
@@ -758,4 +788,92 @@ private fun CompactTelemetryField(
         colors = arkhamTextFieldColors(),
         modifier = modifier,
     )
+}
+
+@Composable
+private fun CompactRestTimerBar(
+    restTimer: RestTimerState,
+    controlsEnabled: Boolean,
+    onAdjust: (Int) -> Unit,
+    onSkip: () -> Unit,
+) {
+    val isCompleted = restTimer.isCompleted
+    val accentColor = if (isCompleted) ArkhamColors.TacticalAmber else ArkhamColors.PhosphorGreen
+    val statusLabel = if (isCompleted) "REST COMPLETE" else "REST TIMER"
+
+    ArkhamHudPanel(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .testTag("rest_timer_panel"),
+        highlighted = true,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = statusLabel,
+                    style = ArkhamTelemetryStyle,
+                    color = if (isCompleted) ArkhamColors.TacticalAmber else ArkhamColors.PhosphorGreenDim,
+                )
+                Text(
+                    text = formatElapsedDuration(restTimer.remainingSeconds.toLong()),
+                    style = ArkhamTelemetryLargeStyle,
+                    color = accentColor,
+                    modifier = Modifier.testTag("rest_timer_remaining"),
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .background(ArkhamColors.TerminalEmerald.copy(alpha = 0.4f)),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(restTimer.progressFraction)
+                        .height(2.dp)
+                        .background(accentColor),
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ArkhamSecondaryButton(
+                    text = "-15s",
+                    onClick = { onAdjust(-UserPreferences.REST_TIMER_STEP_SECONDS) },
+                    enabled = controlsEnabled && restTimer.remainingSeconds > 0,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("rest_timer_decrement"),
+                )
+                ArkhamSecondaryButton(
+                    text = "+15s",
+                    onClick = { onAdjust(UserPreferences.REST_TIMER_STEP_SECONDS) },
+                    enabled = controlsEnabled,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("rest_timer_increment"),
+                )
+                ArkhamSecondaryButton(
+                    text = "Skip",
+                    onClick = onSkip,
+                    enabled = controlsEnabled,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("rest_timer_skip"),
+                )
+            }
+        }
+    }
 }

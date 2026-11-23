@@ -276,8 +276,12 @@ fun ArkhamSecondaryButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
+    contentColor: Color = ArkhamColors.MintWhite,
+    borderColor: Color? = null,
 ) {
-    val borderColor = if (enabled) {
+    val resolvedBorderColor = borderColor?.let {
+        if (enabled) it else it.copy(alpha = 0.45f)
+    } ?: if (enabled) {
         ArkhamColors.TerminalEmeraldBright
     } else {
         ArkhamColors.TerminalEmerald.copy(alpha = 0.45f)
@@ -288,9 +292,9 @@ fun ArkhamSecondaryButton(
         enabled = enabled,
         shape = ArkhamShapes.chip,
         contentPadding = contentPadding,
-        border = BorderStroke(1.dp, borderColor),
+        border = BorderStroke(1.dp, resolvedBorderColor),
         colors = ButtonDefaults.outlinedButtonColors(
-            contentColor = ArkhamColors.MintWhite,
+            contentColor = contentColor,
             disabledContentColor = ArkhamColors.MintMuted.copy(alpha = 0.5f),
         ),
     ) {
@@ -362,6 +366,9 @@ fun ArkhamDeleteConfirmationDialog(
     message: String,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
+    confirmLabel: String = "Delete",
+    confirmTestTag: String? = null,
+    dismissTestTag: String? = null,
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -396,14 +403,18 @@ fun ArkhamDeleteConfirmationDialog(
                     ArkhamSecondaryButton(
                         text = "Cancel",
                         onClick = onDismiss,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .let { if (dismissTestTag != null) it.testTag(dismissTestTag) else it },
                     )
                     ArkhamPrimaryButton(
-                        text = "Delete",
+                        text = confirmLabel,
                         onClick = onConfirm,
                         containerColor = ArkhamColors.AlertRed,
                         contentColor = ArkhamColors.OnAlertRed,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .let { if (confirmTestTag != null) it.testTag(confirmTestTag) else it },
                     )
                 }
             }
