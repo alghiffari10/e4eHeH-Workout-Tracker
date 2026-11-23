@@ -39,26 +39,20 @@ data class ExerciseEditorState(
     val nameError: String? = null,
 )
 
-/** Reusable Exercise input fields shared between the library modal and inline Routine picker creator. */
+/** Core Exercise input fields shared between the library modal and inline Routine picker creator. */
 @Composable
-fun ExerciseFormFields(
+fun ExerciseCoreFormFields(
     name: String,
     nameError: String?,
     discipline: Discipline,
     trackingMode: TrackingMode,
-    defaultNotes: String,
-    showNotesField: Boolean,
     onNameChange: (String) -> Unit,
     onDisciplineChange: (Discipline) -> Unit,
     onTrackingModeChange: (TrackingMode) -> Unit,
-    onNotesChange: (String) -> Unit,
     nameTestTag: String,
-    notesTestTag: String? = null,
     disciplineTestTagOf: ((Discipline) -> String)? = null,
     trackingModeTestTagOf: ((TrackingMode) -> String)? = null,
 ) {
-    val fieldColors = arkhamTextFieldColors()
-
     OutlinedTextField(
         value = name,
         onValueChange = onNameChange,
@@ -75,7 +69,7 @@ fun ExerciseFormFields(
             }
         },
         shape = ArkhamShapes.chip,
-        colors = fieldColors,
+        colors = arkhamTextFieldColors(),
         modifier = Modifier
             .fillMaxWidth()
             .testTag(nameTestTag),
@@ -98,21 +92,6 @@ fun ExerciseFormFields(
         onSelect = onTrackingModeChange,
         testTagOf = trackingModeTestTagOf,
     )
-
-    if (showNotesField) {
-        OutlinedTextField(
-            value = defaultNotes,
-            onValueChange = onNotesChange,
-            label = { Text("Default Notes (Optional)") },
-            minLines = 2,
-            maxLines = 4,
-            shape = ArkhamShapes.chip,
-            colors = fieldColors,
-            modifier = Modifier
-                .fillMaxWidth()
-                .let { base -> if (notesTestTag != null) base.testTag(notesTestTag) else base },
-        )
-    }
 }
 
 /** Modal chamfered HUD dialog for creating or editing an Exercise. */
@@ -148,19 +127,28 @@ fun ExerciseEditorDialog(
                     color = ArkhamColors.PhosphorGreen,
                 )
 
-                ExerciseFormFields(
+                ExerciseCoreFormFields(
                     name = state.name,
                     nameError = state.nameError,
                     discipline = state.discipline,
                     trackingMode = state.trackingMode,
-                    defaultNotes = state.defaultNotes,
-                    showNotesField = true,
                     onNameChange = onNameChange,
                     onDisciplineChange = onDisciplineChange,
                     onTrackingModeChange = onTrackingModeChange,
-                    onNotesChange = onNotesChange,
                     nameTestTag = "exercise_name_input",
-                    notesTestTag = "exercise_notes_input",
+                )
+
+                OutlinedTextField(
+                    value = state.defaultNotes,
+                    onValueChange = onNotesChange,
+                    label = { Text("Default Notes (Optional)") },
+                    minLines = 2,
+                    maxLines = 4,
+                    shape = ArkhamShapes.chip,
+                    colors = arkhamTextFieldColors(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("exercise_notes_input"),
                 )
 
                 Row(

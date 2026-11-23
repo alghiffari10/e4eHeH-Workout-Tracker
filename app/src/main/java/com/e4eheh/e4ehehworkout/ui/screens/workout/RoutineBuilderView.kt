@@ -77,27 +77,11 @@ fun RoutineBuilderView(
             .padding(horizontal = 16.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            IconButton(
-                onClick = { onAction(WorkoutAction.DismissRoutineBuilder) },
-                modifier = Modifier.testTag("routine_builder_back_button"),
-            ) {
-                Icon(
-                    imageVector = ArkhamIcons.Back,
-                    contentDescription = "Back",
-                    tint = ArkhamColors.PhosphorGreen,
-                )
-            }
-            Text(
-                text = if (state.editingRoutineId == null) "CREATE ROUTINE" else "EDIT ROUTINE",
-                style = ArkhamTelemetryLargeStyle,
-                color = ArkhamColors.PhosphorGreen,
-            )
-        }
+        RoutineTopHeader(
+            title = if (state.editingRoutineId == null) "CREATE ROUTINE" else "EDIT ROUTINE",
+            backTestTag = "routine_builder_back_button",
+            onBack = { onAction(WorkoutAction.DismissRoutineBuilder) },
+        )
 
         OutlinedTextField(
             value = state.name,
@@ -198,6 +182,41 @@ fun RoutineBuilderView(
                     .testTag("routine_save_button"),
             )
         }
+    }
+}
+
+@Composable
+private fun RoutineTopHeader(
+    title: String,
+    backTestTag: String,
+    onBack: () -> Unit,
+    backEnabled: Boolean = true,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        IconButton(
+            onClick = onBack,
+            enabled = backEnabled,
+            modifier = Modifier.testTag(backTestTag),
+        ) {
+            Icon(
+                imageVector = ArkhamIcons.Back,
+                contentDescription = "Back",
+                tint = if (backEnabled) {
+                    ArkhamColors.PhosphorGreen
+                } else {
+                    ArkhamColors.MintMuted.copy(alpha = 0.35f)
+                },
+            )
+        }
+        Text(
+            text = title,
+            style = ArkhamTelemetryLargeStyle,
+            color = ArkhamColors.PhosphorGreen,
+        )
     }
 }
 
@@ -309,7 +328,7 @@ private fun RoutineBuilderExerciseRow(
                     color = ArkhamColors.MintMuted,
                 )
                 Text(
-                    text = formatTargetSets(draft.defaultTargetSets),
+                    text = draft.defaultTargetSets?.let(::formatTargetSetsLabel) ?: "OPTIONAL",
                     style = ArkhamTelemetryStyle,
                     color = if (draft.defaultTargetSets != null) {
                         ArkhamColors.PhosphorGreen
@@ -346,6 +365,7 @@ private fun RoutineExercisePickerView(
     modifier: Modifier = Modifier,
 ) {
     val inline = state.inlineExercise
+    val canNavigateBack = inline?.isSaving != true
     val handleBack = {
         if (inline != null) {
             onAction(WorkoutAction.CloseInlineExerciseCreator)
@@ -354,7 +374,7 @@ private fun RoutineExercisePickerView(
         }
     }
 
-    BackHandler(onBack = handleBack)
+    BackHandler(enabled = canNavigateBack, onBack = handleBack)
 
     Column(
         modifier = modifier
@@ -362,27 +382,12 @@ private fun RoutineExercisePickerView(
             .padding(horizontal = 16.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            IconButton(
-                onClick = handleBack,
-                modifier = Modifier.testTag("picker_back_button"),
-            ) {
-                Icon(
-                    imageVector = ArkhamIcons.Back,
-                    contentDescription = "Back",
-                    tint = ArkhamColors.PhosphorGreen,
-                )
-            }
-            Text(
-                text = "ADD EXERCISE",
-                style = ArkhamTelemetryLargeStyle,
-                color = ArkhamColors.PhosphorGreen,
-            )
-        }
+        RoutineTopHeader(
+            title = "ADD EXERCISE",
+            backTestTag = "picker_back_button",
+            onBack = handleBack,
+            backEnabled = canNavigateBack,
+        )
 
         if (inline != null) {
             Column(
@@ -403,13 +408,11 @@ private fun RoutineExercisePickerView(
                             style = ArkhamTelemetryStyle,
                             color = ArkhamColors.PhosphorGreen,
                         )
-                        ExerciseFormFields(
+                        ExerciseCoreFormFields(
                             name = inline.name,
                             nameError = inline.nameError,
                             discipline = inline.discipline,
                             trackingMode = inline.trackingMode,
-                            defaultNotes = "",
-                            showNotesField = false,
                             onNameChange = { onAction(WorkoutAction.UpdateInlineExerciseName(it)) },
                             onDisciplineChange = {
                                 onAction(WorkoutAction.UpdateInlineExerciseDiscipline(it))
@@ -417,7 +420,6 @@ private fun RoutineExercisePickerView(
                             onTrackingModeChange = {
                                 onAction(WorkoutAction.UpdateInlineExerciseTrackingMode(it))
                             },
-                            onNotesChange = {},
                             nameTestTag = "inline_exercise_name_input",
                             disciplineTestTagOf = { "inline_exercise_discipline_${it.name}" },
                             trackingModeTestTagOf = { "inline_exercise_tracking_mode_${it.name}" },
@@ -587,7 +589,7 @@ private fun PickerExerciseRow(
                     if (alreadyInRoutine) {
                         ArkhamHudBadge(
                             label = "IN ROUTINE",
-                            accentColor = ArkhamColors.TacticalAmber,
+                            accentColor = ArkhamColors.MintWhite,
                         )
                     }
                 }
@@ -618,8 +620,5 @@ fun DeleteRoutineDialog(
     )
 }
 
-private fun formatTargetSets(defaultTargetSets: Int?): String = when (defaultTargetSets) {
-    null -> "OPTIONAL"
-    1 -> "1 SET"
-    else -> "$defaultTargetSets SETS"
-}
+internal fun formatTargetSetsLabel(targetSets: Int): String =
+    if (targetSets == 1) "1 SET" else "$targetSets SETS"

@@ -1,6 +1,5 @@
 package com.e4eheh.e4ehehworkout.ui.screens.workout
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -26,7 +25,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -39,6 +37,7 @@ import com.e4eheh.e4ehehworkout.ui.components.ArkhamHudPanel
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamIcons
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamPrimaryButton
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSectionHeader
+import com.e4eheh.e4ehehworkout.ui.components.arkhamSelectableColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamMotion
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamShapes
@@ -76,18 +75,52 @@ fun WorkoutScreen(
         )
 
         when (uiState.selectedSection) {
-            WorkoutTabSection.ROUTINES -> RoutinesSection(
-                routines = uiState.routines,
-                exercisesById = uiState.exercisesById,
-                onAction = onAction,
+            WorkoutTabSection.ROUTINES -> WorkoutCatalogSection(
+                headerTitle = "ROUTINES",
+                telemetryLabel = String.format(Locale.US, "%02d BUILT", uiState.routines.size),
+                items = uiState.routines,
+                itemKey = { it.id },
+                emptyTitle = "NO ROUTINES BUILT",
+                emptyBody = "Build reusable Routines under a primary Discipline and order Exercises from any Discipline, even creating new Exercises inline.",
+                emptyButtonText = "CREATE FIRST ROUTINE",
+                emptyButtonModifier = Modifier.testTag("routine_create_first_button"),
+                createButtonText = "+ NEW ROUTINE",
+                createButtonModifier = Modifier.testTag("routine_create_button"),
+                listModifier = Modifier.testTag("routines_list"),
+                onCreateClick = { onAction(WorkoutAction.OpenCreateRoutine) },
                 modifier = Modifier.weight(1f),
-            )
+            ) { routine, itemModifier ->
+                RoutineCard(
+                    routine = routine,
+                    exercisesById = uiState.exercisesById,
+                    onEditClick = { onAction(WorkoutAction.OpenEditRoutine(routine)) },
+                    onDeleteClick = { onAction(WorkoutAction.RequestDeleteRoutine(routine)) },
+                    modifier = itemModifier,
+                )
+            }
 
-            WorkoutTabSection.EXERCISES -> ExerciseLibrarySection(
-                exercises = uiState.exercises,
-                onAction = onAction,
+            WorkoutTabSection.EXERCISES -> WorkoutCatalogSection(
+                headerTitle = "EXERCISE LIBRARY",
+                telemetryLabel = String.format(Locale.US, "%02d CATALOGED", uiState.exercises.size),
+                items = uiState.exercises,
+                itemKey = { it.id },
+                emptyTitle = "NO EXERCISES CATALOGED",
+                emptyBody = "Build your personal movement catalog from scratch. Model each progression with its own Discipline and Tracking Mode.",
+                emptyButtonText = "ADD FIRST EXERCISE",
+                emptyButtonModifier = Modifier,
+                createButtonText = "+ NEW EXERCISE",
+                createButtonModifier = Modifier,
+                listModifier = Modifier,
+                onCreateClick = { onAction(WorkoutAction.OpenCreateExercise) },
                 modifier = Modifier.weight(1f),
-            )
+            ) { exercise, itemModifier ->
+                ExerciseCard(
+                    exercise = exercise,
+                    onEditClick = { onAction(WorkoutAction.OpenEditExercise(exercise)) },
+                    onDeleteClick = { onAction(WorkoutAction.RequestDeleteExercise(exercise)) },
+                    modifier = itemModifier,
+                )
+            }
         }
     }
 
@@ -155,24 +188,10 @@ private fun WorkoutSegmentTab(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val borderColor by animateColorAsState(
-        targetValue = if (selected) ArkhamColors.PhosphorGreen else ArkhamColors.TerminalEmerald,
-        animationSpec = tween(durationMillis = ArkhamMotion.STATE_MS),
-        label = "segmentBorder",
-    )
-    val containerColor by animateColorAsState(
-        targetValue = if (selected) {
-            ArkhamColors.TerminalEmerald.copy(alpha = 0.5f)
-        } else {
-            ArkhamColors.ObsidianPanel
-        },
-        animationSpec = tween(durationMillis = ArkhamMotion.STATE_MS),
-        label = "segmentContainer",
-    )
-    val textColor by animateColorAsState(
-        targetValue = if (selected) ArkhamColors.PhosphorGreen else ArkhamColors.MintMuted,
-        animationSpec = tween(durationMillis = ArkhamMotion.STATE_MS),
-        label = "segmentText",
+    val (borderColor, containerColor, textColor) = arkhamSelectableColors(
+        selected = selected,
+        selectedContainerAlpha = 0.5f,
+        labelPrefix = "segment",
     )
 
     Surface(
@@ -199,22 +218,32 @@ private fun WorkoutSegmentTab(
 }
 
 @Composable
-private fun RoutinesSection(
-    routines: List<Routine>,
-    exercisesById: Map<String, Exercise>,
-    onAction: (WorkoutAction) -> Unit,
+private fun <T : Any> WorkoutCatalogSection(
+    headerTitle: String,
+    telemetryLabel: String,
+    items: List<T>,
+    itemKey: (T) -> Any,
+    emptyTitle: String,
+    emptyBody: String,
+    emptyButtonText: String,
+    emptyButtonModifier: Modifier,
+    createButtonText: String,
+    createButtonModifier: Modifier,
+    listModifier: Modifier,
+    onCreateClick: () -> Unit,
     modifier: Modifier = Modifier,
+    itemContent: @Composable (item: T, modifier: Modifier) -> Unit,
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         ArkhamSectionHeader(
-            title = "ROUTINES",
-            telemetryLabel = String.format(Locale.US, "%02d BUILT", routines.size),
+            title = headerTitle,
+            telemetryLabel = telemetryLabel,
         )
 
-        if (routines.isEmpty()) {
+        if (items.isEmpty()) {
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -225,54 +254,46 @@ private fun RoutinesSection(
                     highlighted = true,
                 ) {
                     Text(
-                        text = "NO ROUTINES BUILT",
+                        text = emptyTitle,
                         style = MaterialTheme.typography.titleMedium,
                         color = ArkhamColors.MintWhite,
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Build reusable Routines under a primary Discipline and order Exercises from any Discipline, even creating new Exercises inline.",
+                        text = emptyBody,
                         style = MaterialTheme.typography.bodyMedium,
                         color = ArkhamColors.MintMuted,
                     )
                     Spacer(modifier = Modifier.height(14.dp))
                     ArkhamPrimaryButton(
-                        text = "CREATE FIRST ROUTINE",
-                        onClick = { onAction(WorkoutAction.OpenCreateRoutine) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("routine_create_first_button"),
+                        text = emptyButtonText,
+                        onClick = onCreateClick,
+                        modifier = emptyButtonModifier.fillMaxWidth(),
                     )
                 }
             }
         } else {
             LazyColumn(
-                modifier = Modifier
+                modifier = listModifier
                     .weight(1f)
-                    .fillMaxWidth()
-                    .testTag("routines_list"),
+                    .fillMaxWidth(),
                 contentPadding = PaddingValues(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                item(key = "create_routine_action") {
+                item(key = "create_action") {
                     ArkhamPrimaryButton(
-                        text = "+ NEW ROUTINE",
-                        onClick = { onAction(WorkoutAction.OpenCreateRoutine) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("routine_create_button"),
+                        text = createButtonText,
+                        onClick = onCreateClick,
+                        modifier = createButtonModifier.fillMaxWidth(),
                     )
                 }
                 items(
-                    items = routines,
-                    key = { it.id },
-                ) { routine ->
-                    RoutineCard(
-                        routine = routine,
-                        exercisesById = exercisesById,
-                        onEditClick = { onAction(WorkoutAction.OpenEditRoutine(routine)) },
-                        onDeleteClick = { onAction(WorkoutAction.RequestDeleteRoutine(routine)) },
-                        modifier = Modifier.animateItem(
+                    items = items,
+                    key = itemKey,
+                ) { item ->
+                    itemContent(
+                        item,
+                        Modifier.animateItem(
                             fadeInSpec = tween(ArkhamMotion.TRANSITION_MS),
                             fadeOutSpec = tween(ArkhamMotion.STATE_MS),
                             placementSpec = tween(ArkhamMotion.TRANSITION_MS),
@@ -375,90 +396,11 @@ private fun RoutineCard(
                         }
                         entry.defaultTargetSets?.let { sets ->
                             ArkhamHudBadge(
-                                label = if (sets == 1) "1 SET" else "$sets SETS",
+                                label = formatTargetSetsLabel(sets),
                                 accentColor = ArkhamColors.PhosphorGreen,
                             )
                         }
                     }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ExerciseLibrarySection(
-    exercises: List<Exercise>,
-    onAction: (WorkoutAction) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        ArkhamSectionHeader(
-            title = "EXERCISE LIBRARY",
-            telemetryLabel = String.format(Locale.US, "%02d CATALOGED", exercises.size),
-        )
-
-        if (exercises.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState()),
-            ) {
-                ArkhamHudPanel(
-                    modifier = Modifier.fillMaxWidth(),
-                    highlighted = true,
-                ) {
-                    Text(
-                        text = "NO EXERCISES CATALOGED",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = ArkhamColors.MintWhite,
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Build your personal movement catalog from scratch. Model each progression with its own Discipline and Tracking Mode.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = ArkhamColors.MintMuted,
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
-                    ArkhamPrimaryButton(
-                        text = "ADD FIRST EXERCISE",
-                        onClick = { onAction(WorkoutAction.OpenCreateExercise) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentPadding = PaddingValues(bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                item(key = "create_exercise_action") {
-                    ArkhamPrimaryButton(
-                        text = "+ NEW EXERCISE",
-                        onClick = { onAction(WorkoutAction.OpenCreateExercise) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                items(
-                    items = exercises,
-                    key = { it.id },
-                ) { exercise ->
-                    ExerciseCard(
-                        exercise = exercise,
-                        onEditClick = { onAction(WorkoutAction.OpenEditExercise(exercise)) },
-                        onDeleteClick = { onAction(WorkoutAction.RequestDeleteExercise(exercise)) },
-                        modifier = Modifier.animateItem(
-                            fadeInSpec = tween(ArkhamMotion.TRANSITION_MS),
-                            fadeOutSpec = tween(ArkhamMotion.STATE_MS),
-                            placementSpec = tween(ArkhamMotion.TRANSITION_MS),
-                        ),
-                    )
                 }
             }
         }

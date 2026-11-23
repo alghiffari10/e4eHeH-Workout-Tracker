@@ -55,7 +55,56 @@ data class RoutineBuilderState(
     val showExercisePicker: Boolean = false,
     val pickerDisciplineFilter: Discipline? = null,
     val inlineExercise: InlineExerciseDraft? = null,
-)
+) {
+    fun moveExercise(index: Int, delta: Int): RoutineBuilderState {
+        val targetIndex = index + delta
+        if (index !in exercises.indices || targetIndex !in exercises.indices) return this
+        val mutable = exercises.toMutableList()
+        val item = mutable[index]
+        mutable[index] = mutable[targetIndex]
+        mutable[targetIndex] = item
+        return copy(exercises = mutable)
+    }
+
+    fun adjustTargetSets(index: Int, delta: Int): RoutineBuilderState {
+        if (index !in exercises.indices) return this
+        val current = exercises[index]
+        val nextSets = when {
+            delta > 0 -> current.defaultTargetSets
+                ?.let { (it + delta).coerceAtMost(RoutineExercise.MAX_DEFAULT_TARGET_SETS) }
+                ?: RoutineExercise.MIN_DEFAULT_TARGET_SETS
+            delta < 0 -> current.defaultTargetSets?.let { currentSets ->
+                val candidate = currentSets + delta
+                if (candidate < RoutineExercise.MIN_DEFAULT_TARGET_SETS) null else candidate
+            }
+            else -> current.defaultTargetSets
+        }
+        val mutable = exercises.toMutableList()
+        mutable[index] = current.copy(defaultTargetSets = nextSets)
+        return copy(exercises = mutable)
+    }
+
+    fun removeExercise(index: Int): RoutineBuilderState {
+        if (index !in exercises.indices) return this
+        val mutable = exercises.toMutableList()
+        mutable.removeAt(index)
+        return copy(exercises = mutable)
+    }
+
+    fun appendExercise(exerciseId: String): RoutineBuilderState {
+        val draft = RoutineExerciseDraft(
+            draftKey = UUID.randomUUID().toString(),
+            routineExerciseId = null,
+            exerciseId = exerciseId,
+            defaultTargetSets = null,
+        )
+        return copy(
+            exercises = exercises + draft,
+            showExercisePicker = false,
+            inlineExercise = null,
+        )
+    }
+}
 
 /** Combined UI state for the Workout tab (Routines + Exercise library). */
 data class WorkoutUiState(
@@ -233,7 +282,13 @@ class WorkoutViewModel(
                 pendingDeleteExercise.value = null
             }
 
-            WorkoutAction.ConfirmDeleteExercise -> confirmDeleteExercise()
+            WorkoutAction.ConfirmDeleteExercise -> {
+                val target = pendingDeleteExercise.value ?: return
+                recentlyCreatedExercises.update { it - target.id }
+                launchSoftDelete(pendingDeleteExercise, target.id) { id ->
+                    exerciseRepository.softDelete(id)
+                }
+            }
 
             WorkoutAction.OpenCreateRoutine -> {
                 routineBuilder.value = RoutineBuilderState()
@@ -264,15 +319,25 @@ class WorkoutViewModel(
                 routineBuilder.update { it?.copy(discipline = action.discipline) }
             }
 
-            is WorkoutAction.MoveRoutineExerciseUp -> moveRoutineExercise(action.index, delta = -1)
+            is WorkoutAction.MoveRoutineExerciseUp -> {
+                routineBuilder.update { it?.moveExercise(action.index, delta = -1) }
+            }
 
-            is WorkoutAction.MoveRoutineExerciseDown -> moveRoutineExercise(action.index, delta = 1)
+            is WorkoutAction.MoveRoutineExerciseDown -> {
+                routineBuilder.update { it?.moveExercise(action.index, delta = 1) }
+            }
 
-            is WorkoutAction.IncrementRoutineExerciseTargetSets -> adjustTargetSets(action.index, delta = 1)
+            is WorkoutAction.IncrementRoutineExerciseTargetSets -> {
+                routineBuilder.update { it?.adjustTargetSets(action.index, delta = 1) }
+            }
 
-            is WorkoutAction.DecrementRoutineExerciseTargetSets -> adjustTargetSets(action.index, delta = -1)
+            is WorkoutAction.DecrementRoutineExerciseTargetSets -> {
+                routineBuilder.update { it?.adjustTargetSets(action.index, delta = -1) }
+            }
 
-            is WorkoutAction.RemoveRoutineExercise -> removeRoutineExercise(action.index)
+            is WorkoutAction.RemoveRoutineExercise -> {
+                routineBuilder.update { it?.removeExercise(action.index) }
+            }
 
             WorkoutAction.OpenExercisePicker -> {
                 routineBuilder.update {
@@ -285,11 +350,15 @@ class WorkoutViewModel(
             }
 
             WorkoutAction.CloseExercisePicker -> {
-                routineBuilder.update {
-                    it?.copy(
-                        showExercisePicker = false,
-                        inlineExercise = null,
-                    )
+                routineBuilder.update { builder ->
+                    if (builder?.inlineExercise?.isSaving == true) {
+                        builder
+                    } else {
+                        builder?.copy(
+                            showExercisePicker = false,
+                            inlineExercise = null,
+                        )
+                    }
                 }
             }
 
@@ -298,26 +367,12 @@ class WorkoutViewModel(
             }
 
             is WorkoutAction.AddExistingExerciseToRoutine -> {
-                routineBuilder.update { builder ->
-                    builder ?: return@update null
-                    val draft = RoutineExerciseDraft(
-                        draftKey = UUID.randomUUID().toString(),
-                        routineExerciseId = null,
-                        exerciseId = action.exerciseId,
-                        defaultTargetSets = null,
-                    )
-                    builder.copy(
-                        exercises = builder.exercises + draft,
-                        showExercisePicker = false,
-                        inlineExercise = null,
-                    )
-                }
+                routineBuilder.update { it?.appendExercise(action.exerciseId) }
             }
 
             WorkoutAction.OpenInlineExerciseCreator -> {
                 routineBuilder.update { builder ->
-                    builder ?: return@update null
-                    builder.copy(
+                    builder?.copy(
                         inlineExercise = InlineExerciseDraft(
                             discipline = builder.pickerDisciplineFilter ?: builder.discipline,
                         ),
@@ -326,34 +381,25 @@ class WorkoutViewModel(
             }
 
             WorkoutAction.CloseInlineExerciseCreator -> {
-                routineBuilder.update { it?.copy(inlineExercise = null) }
+                routineBuilder.update { builder ->
+                    if (builder?.inlineExercise?.isSaving == true) {
+                        builder
+                    } else {
+                        builder?.copy(inlineExercise = null)
+                    }
+                }
             }
 
             is WorkoutAction.UpdateInlineExerciseName -> {
-                routineBuilder.update { builder ->
-                    builder?.copy(
-                        inlineExercise = builder.inlineExercise?.copy(
-                            name = action.name,
-                            nameError = null,
-                        ),
-                    )
-                }
+                updateInlineExercise { it.copy(name = action.name, nameError = null) }
             }
 
             is WorkoutAction.UpdateInlineExerciseDiscipline -> {
-                routineBuilder.update { builder ->
-                    builder?.copy(
-                        inlineExercise = builder.inlineExercise?.copy(discipline = action.discipline),
-                    )
-                }
+                updateInlineExercise { it.copy(discipline = action.discipline) }
             }
 
             is WorkoutAction.UpdateInlineExerciseTrackingMode -> {
-                routineBuilder.update { builder ->
-                    builder?.copy(
-                        inlineExercise = builder.inlineExercise?.copy(trackingMode = action.trackingMode),
-                    )
-                }
+                updateInlineExercise { it.copy(trackingMode = action.trackingMode) }
             }
 
             WorkoutAction.SaveInlineExercise -> saveInlineExercise()
@@ -372,7 +418,33 @@ class WorkoutViewModel(
                 pendingDeleteRoutine.value = null
             }
 
-            WorkoutAction.ConfirmDeleteRoutine -> confirmDeleteRoutine()
+            WorkoutAction.ConfirmDeleteRoutine -> {
+                val target = pendingDeleteRoutine.value ?: return
+                launchSoftDelete(pendingDeleteRoutine, target.id) { id ->
+                    routineRepository.softDelete(id)
+                }
+            }
+        }
+    }
+
+    private fun updateInlineExercise(transform: (InlineExerciseDraft) -> InlineExerciseDraft) {
+        routineBuilder.update { builder ->
+            builder?.copy(inlineExercise = builder.inlineExercise?.let(transform))
+        }
+    }
+
+    private fun <T> launchSoftDelete(
+        pendingFlow: MutableStateFlow<T?>,
+        id: String,
+        deleteAction: suspend (String) -> Unit,
+    ) {
+        pendingFlow.value = null
+        viewModelScope.launch {
+            try {
+                deleteAction(id)
+            } catch (_: NoSuchElementException) {
+                // Record was already removed concurrently.
+            }
         }
     }
 
@@ -406,65 +478,6 @@ class WorkoutViewModel(
         }
     }
 
-    private fun confirmDeleteExercise() {
-        val target = pendingDeleteExercise.value ?: return
-        pendingDeleteExercise.value = null
-        recentlyCreatedExercises.update { it - target.id }
-        viewModelScope.launch {
-            try {
-                exerciseRepository.softDelete(target.id)
-            } catch (_: NoSuchElementException) {
-                // Exercise was already removed concurrently.
-            }
-        }
-    }
-
-    private fun moveRoutineExercise(index: Int, delta: Int) {
-        routineBuilder.update { builder ->
-            builder ?: return@update null
-            val targetIndex = index + delta
-            if (index !in builder.exercises.indices || targetIndex !in builder.exercises.indices) {
-                return@update builder
-            }
-            val mutable = builder.exercises.toMutableList()
-            val item = mutable[index]
-            mutable[index] = mutable[targetIndex]
-            mutable[targetIndex] = item
-            builder.copy(exercises = mutable)
-        }
-    }
-
-    private fun adjustTargetSets(index: Int, delta: Int) {
-        routineBuilder.update { builder ->
-            builder ?: return@update null
-            if (index !in builder.exercises.indices) return@update builder
-            val current = builder.exercises[index]
-            val nextSets = when {
-                delta > 0 -> current.defaultTargetSets
-                    ?.let { (it + delta).coerceAtMost(RoutineExercise.MAX_DEFAULT_TARGET_SETS) }
-                    ?: RoutineExercise.MIN_DEFAULT_TARGET_SETS
-                delta < 0 -> current.defaultTargetSets?.let { currentSets ->
-                    val candidate = currentSets + delta
-                    if (candidate < RoutineExercise.MIN_DEFAULT_TARGET_SETS) null else candidate
-                }
-                else -> current.defaultTargetSets
-            }
-            val mutable = builder.exercises.toMutableList()
-            mutable[index] = current.copy(defaultTargetSets = nextSets)
-            builder.copy(exercises = mutable)
-        }
-    }
-
-    private fun removeRoutineExercise(index: Int) {
-        routineBuilder.update { builder ->
-            builder ?: return@update null
-            if (index !in builder.exercises.indices) return@update builder
-            val mutable = builder.exercises.toMutableList()
-            mutable.removeAt(index)
-            builder.copy(exercises = mutable)
-        }
-    }
-
     private fun saveInlineExercise() {
         val currentBuilder = routineBuilder.value ?: return
         val inline = currentBuilder.inlineExercise ?: return
@@ -472,22 +485,11 @@ class WorkoutViewModel(
 
         val trimmedName = inline.name.trim()
         if (trimmedName.isEmpty()) {
-            routineBuilder.update { builder ->
-                builder?.copy(
-                    inlineExercise = builder.inlineExercise?.copy(nameError = "Exercise name is required."),
-                )
-            }
+            updateInlineExercise { it.copy(nameError = "Exercise name is required.") }
             return
         }
 
-        routineBuilder.update { builder ->
-            builder?.copy(
-                inlineExercise = builder.inlineExercise?.copy(
-                    isSaving = true,
-                    nameError = null,
-                ),
-            )
-        }
+        updateInlineExercise { it.copy(isSaving = true, nameError = null) }
 
         viewModelScope.launch {
             val created = exerciseRepository.create(
@@ -498,19 +500,7 @@ class WorkoutViewModel(
                 )
             )
             recentlyCreatedExercises.update { it + (created.id to created) }
-            val newDraft = RoutineExerciseDraft(
-                draftKey = UUID.randomUUID().toString(),
-                routineExerciseId = null,
-                exerciseId = created.id,
-                defaultTargetSets = null,
-            )
-            routineBuilder.update { builder ->
-                builder?.copy(
-                    exercises = builder.exercises + newDraft,
-                    showExercisePicker = false,
-                    inlineExercise = null,
-                )
-            }
+            routineBuilder.update { it?.appendExercise(created.id) }
         }
     }
 
@@ -545,18 +535,6 @@ class WorkoutViewModel(
                 } catch (_: NoSuchElementException) {
                     // Routine was deleted before the edit saved.
                 }
-            }
-        }
-    }
-
-    private fun confirmDeleteRoutine() {
-        val target = pendingDeleteRoutine.value ?: return
-        pendingDeleteRoutine.value = null
-        viewModelScope.launch {
-            try {
-                routineRepository.softDelete(target.id)
-            } catch (_: NoSuchElementException) {
-                // Routine was already removed concurrently.
             }
         }
     }

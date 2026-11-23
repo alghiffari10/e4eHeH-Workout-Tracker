@@ -220,7 +220,15 @@ class RoutineBuilderTest {
         composeTestRule.onNodeWithTag("routine_name_input").performTextInput("Hybrid Pull")
         composeTestRule.onNodeWithTag("routine_discipline_CONDITIONING").performScrollTo().performClick()
 
-        // Move L-Sit (index 1) up to index 0 -> [L-Sit, Pull-up, Burpee Circuit]
+        // Move L-Sit (index 1) up to index 0, verify move-down & back-up -> [L-Sit, Pull-up, Burpee Circuit]
+        composeTestRule.onNodeWithTag("routine_item_move_up_1").performScrollTo().performClick()
+        composeTestRule.onNode(
+            hasText("L-Sit") and hasAnyAncestor(hasTestTag("routine_builder_item_0")),
+        ).assertIsDisplayed()
+        composeTestRule.onNodeWithTag("routine_item_move_down_0").performScrollTo().performClick()
+        composeTestRule.onNode(
+            hasText("Pull-up") and hasAnyAncestor(hasTestTag("routine_builder_item_0")),
+        ).assertIsDisplayed()
         composeTestRule.onNodeWithTag("routine_item_move_up_1").performScrollTo().performClick()
         composeTestRule.onNode(
             hasText("L-Sit") and hasAnyAncestor(hasTestTag("routine_builder_item_0")),

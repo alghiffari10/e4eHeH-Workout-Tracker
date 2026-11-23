@@ -128,6 +128,35 @@ fun ArkhamHudPanel(
     }
 }
 
+/** Animated border, container, and label colors for selectable Arkham HUD controls. */
+@Composable
+fun arkhamSelectableColors(
+    selected: Boolean,
+    selectedContainerAlpha: Float = 0.45f,
+    labelPrefix: String = "hudSelectable",
+): Triple<Color, Color, Color> {
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) ArkhamColors.PhosphorGreen else ArkhamColors.TerminalEmerald,
+        animationSpec = tween(durationMillis = ArkhamMotion.STATE_MS),
+        label = "${labelPrefix}Border",
+    )
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) {
+            ArkhamColors.TerminalEmerald.copy(alpha = selectedContainerAlpha)
+        } else {
+            ArkhamColors.ObsidianPanel
+        },
+        animationSpec = tween(durationMillis = ArkhamMotion.STATE_MS),
+        label = "${labelPrefix}Container",
+    )
+    val textColor by animateColorAsState(
+        targetValue = if (selected) ArkhamColors.PhosphorGreen else ArkhamColors.MintMuted,
+        animationSpec = tween(durationMillis = ArkhamMotion.STATE_MS),
+        label = "${labelPrefix}Text",
+    )
+    return Triple(borderColor, containerColor, textColor)
+}
+
 /** Selectable chamfered tactical chip for Discipline and Tracking Mode selectors. */
 @Composable
 fun ArkhamHudChip(
@@ -136,24 +165,10 @@ fun ArkhamHudChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val borderColor by animateColorAsState(
-        targetValue = if (selected) ArkhamColors.PhosphorGreen else ArkhamColors.TerminalEmerald,
-        animationSpec = tween(durationMillis = ArkhamMotion.STATE_MS),
-        label = "hudChipBorder",
-    )
-    val containerColor by animateColorAsState(
-        targetValue = if (selected) {
-            ArkhamColors.TerminalEmerald.copy(alpha = 0.45f)
-        } else {
-            ArkhamColors.ObsidianPanel
-        },
-        animationSpec = tween(durationMillis = ArkhamMotion.STATE_MS),
-        label = "hudChipContainer",
-    )
-    val textColor by animateColorAsState(
-        targetValue = if (selected) ArkhamColors.PhosphorGreen else ArkhamColors.MintMuted,
-        animationSpec = tween(durationMillis = ArkhamMotion.STATE_MS),
-        label = "hudChipText",
+    val (borderColor, containerColor, textColor) = arkhamSelectableColors(
+        selected = selected,
+        selectedContainerAlpha = 0.45f,
+        labelPrefix = "hudChip",
     )
 
     Surface(
