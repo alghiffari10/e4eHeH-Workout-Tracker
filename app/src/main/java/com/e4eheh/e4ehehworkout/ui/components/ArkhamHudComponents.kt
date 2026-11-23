@@ -1,0 +1,264 @@
+package com.e4eheh.e4ehehworkout.ui.components
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
+import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
+import com.e4eheh.e4ehehworkout.ui.theme.ArkhamMotion
+import com.e4eheh.e4ehehworkout.ui.theme.ArkhamShapes
+import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryStyle
+
+/** Full-screen obsidian HUD backdrop with subtle Batcomputer grid and scanline texture. */
+@Composable
+fun ArkhamHudBackground(
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(ArkhamColors.ObsidianVoid),
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val gridStep = 28.dp.toPx()
+            val gridColor = ArkhamColors.TerminalEmerald.copy(alpha = 0.10f)
+            var x = 0f
+            while (x <= size.width) {
+                drawLine(
+                    color = gridColor,
+                    start = Offset(x, 0f),
+                    end = Offset(x, size.height),
+                    strokeWidth = 1f,
+                )
+                x += gridStep
+            }
+            var y = 0f
+            while (y <= size.height) {
+                drawLine(
+                    color = gridColor,
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = 1f,
+                )
+                y += gridStep
+            }
+
+            val scanlineStep = 4.dp.toPx()
+            val scanlineColor = ArkhamColors.TerminalEmerald.copy(alpha = 0.06f)
+            var scanY = 0f
+            while (scanY <= size.height) {
+                drawLine(
+                    color = scanlineColor,
+                    start = Offset(0f, scanY),
+                    end = Offset(size.width, scanY),
+                    strokeWidth = 1f,
+                )
+                scanY += scanlineStep
+            }
+        }
+        content()
+    }
+}
+
+/** Chamfered 1dp-bordered HUD panel surface. */
+@Composable
+fun ArkhamHudPanel(
+    modifier: Modifier = Modifier,
+    highlighted: Boolean = false,
+    shape: Shape = ArkhamShapes.panel,
+    contentPadding: PaddingValues = PaddingValues(16.dp),
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val borderColor by animateColorAsState(
+        targetValue = if (highlighted) ArkhamColors.PhosphorGreen else ArkhamColors.TerminalEmerald,
+        animationSpec = tween(durationMillis = ArkhamMotion.RevealMs),
+        label = "hudPanelBorder",
+    )
+    val containerColor by animateColorAsState(
+        targetValue = if (highlighted) ArkhamColors.ObsidianElevated else ArkhamColors.ObsidianSurface,
+        animationSpec = tween(durationMillis = ArkhamMotion.RevealMs),
+        label = "hudPanelContainer",
+    )
+
+    Surface(
+        modifier = modifier,
+        shape = shape,
+        color = containerColor,
+        border = BorderStroke(1.dp, borderColor),
+    ) {
+        Column(
+            modifier = Modifier.padding(contentPadding),
+            content = content,
+        )
+    }
+}
+
+/** Selectable chamfered tactical chip for Discipline and Tracking Mode selectors. */
+@Composable
+fun ArkhamHudChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) ArkhamColors.PhosphorGreen else ArkhamColors.TerminalEmerald,
+        animationSpec = tween(durationMillis = ArkhamMotion.RevealMs),
+        label = "hudChipBorder",
+    )
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) {
+            ArkhamColors.TerminalEmerald.copy(alpha = 0.45f)
+        } else {
+            ArkhamColors.ObsidianPanel
+        },
+        animationSpec = tween(durationMillis = ArkhamMotion.RevealMs),
+        label = "hudChipContainer",
+    )
+    val textColor by animateColorAsState(
+        targetValue = if (selected) ArkhamColors.PhosphorGreen else ArkhamColors.MintMuted,
+        animationSpec = tween(durationMillis = ArkhamMotion.RevealMs),
+        label = "hudChipText",
+    )
+
+    Surface(
+        modifier = modifier.selectable(
+            selected = selected,
+            onClick = onClick,
+            role = Role.RadioButton,
+        ),
+        shape = ArkhamShapes.chip,
+        color = containerColor,
+        border = BorderStroke(1.dp, borderColor),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = textColor,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+        )
+    }
+}
+
+/** Compact monospace HUD metadata badge. */
+@Composable
+fun ArkhamHudBadge(
+    label: String,
+    modifier: Modifier = Modifier,
+    accentColor: Color = ArkhamColors.PhosphorGreenDim,
+) {
+    Surface(
+        modifier = modifier,
+        shape = ArkhamShapes.chip,
+        color = accentColor.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)),
+    ) {
+        Text(
+            text = label,
+            style = ArkhamTelemetryStyle,
+            color = accentColor,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+        )
+    }
+}
+
+/** Monospace section header with optional right-aligned telemetry readout. */
+@Composable
+fun ArkhamSectionHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+    telemetryLabel: String? = null,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "// $title",
+            style = ArkhamTelemetryStyle,
+            color = ArkhamColors.PhosphorGreenDim,
+        )
+        if (telemetryLabel != null) {
+            Text(
+                text = telemetryLabel,
+                style = ArkhamTelemetryStyle,
+                color = ArkhamColors.MintMuted,
+            )
+        }
+    }
+}
+
+@Composable
+fun ArkhamPrimaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    containerColor: Color = ArkhamColors.PhosphorGreen,
+    contentColor: Color = ArkhamColors.OnPhosphor,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier,
+        shape = ArkhamShapes.chip,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = containerColor,
+            contentColor = contentColor,
+        ),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+        )
+    }
+}
+
+@Composable
+fun ArkhamSecondaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier,
+        shape = ArkhamShapes.chip,
+        border = BorderStroke(1.dp, ArkhamColors.TerminalEmeraldBright),
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = ArkhamColors.MintWhite,
+        ),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+        )
+    }
+}
