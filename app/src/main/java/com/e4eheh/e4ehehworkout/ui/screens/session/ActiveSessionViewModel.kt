@@ -7,10 +7,8 @@ import com.e4eheh.e4ehehworkout.domain.model.Discipline
 import com.e4eheh.e4ehehworkout.domain.model.DistanceUnit
 import com.e4eheh.e4ehehworkout.domain.model.Exercise
 import com.e4eheh.e4ehehworkout.domain.model.ExerciseInput
-import com.e4eheh.e4ehehworkout.domain.model.Routine
 import com.e4eheh.e4ehehworkout.domain.model.RoutineExercise
-import com.e4eheh.e4ehehworkout.domain.model.RoutineExerciseInput
-import com.e4eheh.e4ehehworkout.domain.model.RoutineInput
+import com.e4eheh.e4ehehworkout.domain.model.RoutineExerciseSlot
 import com.e4eheh.e4ehehworkout.domain.model.Session
 import com.e4eheh.e4ehehworkout.domain.model.SessionDraftInput
 import com.e4eheh.e4ehehworkout.domain.model.SessionExercise
@@ -159,8 +157,8 @@ data class ActiveSessionDraft(
         return copy(exercises = exercises + entry)
     }
 
-    fun moveExercise(exerciseIndex: Int, delta: Int): ActiveSessionDraft {
-        val targetIndex = exerciseIndex + delta
+    fun moveExercise(exerciseIndex: Int, moveUp: Boolean): ActiveSessionDraft {
+        val targetIndex = if (moveUp) exerciseIndex - 1 else exerciseIndex + 1
         if (exerciseIndex !in exercises.indices || targetIndex !in exercises.indices) return this
         val mutable = exercises.toMutableList()
         val moved = mutable[exerciseIndex]
@@ -227,6 +225,9 @@ data class ActiveSessionDraft(
     ): ActiveSessionDraft = copy(
         exercises = exercises.map { it.reformatForUnits(weightUnit, distanceUnit) },
     )
+
+    fun toRoutineStructureSlots(): List<RoutineExerciseSlot> =
+        exercises.map { RoutineExerciseSlot(it.exerciseId, it.targetSetCountForRoutine()) }
 
     fun toDraftInput(): SessionDraftInput = SessionDraftInput(
         title = title,
@@ -474,10 +475,10 @@ class ActiveSessionViewModel(
             ActiveSessionAction.SaveInlineExercise -> saveInlineExercise()
 
             is ActiveSessionAction.MoveExerciseUp ->
-                mutateDraftAndAutoSave { it.moveExercise(action.exerciseIndex, delta = -1) }
+                mutateDraftAndAutoSave { it.moveExercise(action.exerciseIndex, moveUp = true) }
 
             is ActiveSessionAction.MoveExerciseDown ->
-                mutateDraftAndAutoSave { it.moveExercise(action.exerciseIndex, delta = 1) }
+                mutateDraftAndAutoSave { it.moveExercise(action.exerciseIndex, moveUp = false) }
 
             is ActiveSessionAction.RemoveExercise ->
                 mutateDraftAndAutoSave { it.removeExercise(action.exerciseIndex) }
@@ -756,7 +757,7 @@ class ActiveSessionViewModel(
                     val routineId = snapshot.routineId
                     if (routineId != null && routineRepository != null) {
                         val routine = routineRepository.getById(routineId)
-                        if (routine != null && hasRoutineStructureChanged(routine, snapshot.draft)) {
+                        if (routine != null && !routine.matchesStructure(snapshot.draft.toRoutineStructureSlots())) {
                             internalState.update {
                                 it.copy(
                                     isFinishing = false,
@@ -803,7 +804,7 @@ class ActiveSessionViewModel(
                     try {
                         routineRepository.update(
                             id = routine.id,
-                            input = buildUpdatedRoutineInput(routine, snapshot.draft),
+                            input = routine.toUpdatedInput(snapshot.draft.toRoutineStructureSlots()),
                         )
                     } catch (_: NoSuchElementException) {
                         // Originating Routine was deleted concurrently; still complete Session.
@@ -838,34 +839,6 @@ class ActiveSessionViewModel(
                 )
             }
         }
-    }
-
-    private fun hasRoutineStructureChanged(routine: Routine, draft: ActiveSessionDraft): Boolean {
-        val routineStructure = routine.exercises.map { it.exerciseId to it.defaultTargetSets }
-        val sessionStructure = draft.exercises.map {
-            it.exerciseId to it.targetSetCountForRoutine()
-        }
-        return routineStructure != sessionStructure
-    }
-
-    private fun buildUpdatedRoutineInput(routine: Routine, draft: ActiveSessionDraft): RoutineInput {
-        val existingIdsByExerciseId = HashMap<String, ArrayDeque<String>>()
-        routine.exercises.forEach { entry ->
-            existingIdsByExerciseId.getOrPut(entry.exerciseId) { ArrayDeque() }.addLast(entry.id)
-        }
-        val updatedExercises = draft.exercises.map { exerciseDraft ->
-            val reusedId = existingIdsByExerciseId[exerciseDraft.exerciseId]?.removeFirstOrNull()
-            RoutineExerciseInput(
-                exerciseId = exerciseDraft.exerciseId,
-                defaultTargetSets = exerciseDraft.targetSetCountForRoutine(),
-                id = reusedId,
-            )
-        }
-        return RoutineInput(
-            name = routine.name,
-            discipline = routine.discipline,
-            exercises = updatedExercises,
-        )
     }
 
     private fun hydrateState(

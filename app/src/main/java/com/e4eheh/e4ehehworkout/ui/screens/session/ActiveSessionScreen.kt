@@ -37,6 +37,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
@@ -394,70 +396,35 @@ private fun SessionExerciseCard(
                         .weight(1f)
                         .padding(start = 4.dp),
                 )
-                IconButton(
-                    onClick = { onAction(ActiveSessionAction.MoveExerciseUp(exerciseIndex)) },
+                SessionExerciseHeaderIconButton(
+                    icon = ArkhamIcons.ArrowUp,
+                    contentDescription = "Move ${exercise.exerciseName} up",
                     enabled = canMoveUp,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("session_exercise_move_up_$exerciseIndex"),
-                ) {
-                    Icon(
-                        imageVector = ArkhamIcons.ArrowUp,
-                        contentDescription = "Move ${exercise.exerciseName} up",
-                        tint = if (canMoveUp) {
-                            ArkhamColors.PhosphorGreenDim
-                        } else {
-                            ArkhamColors.MintMuted.copy(alpha = 0.35f)
-                        },
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                IconButton(
-                    onClick = { onAction(ActiveSessionAction.MoveExerciseDown(exerciseIndex)) },
+                    testTag = "session_exercise_move_up_$exerciseIndex",
+                    onClick = { onAction(ActiveSessionAction.MoveExerciseUp(exerciseIndex)) },
+                )
+                SessionExerciseHeaderIconButton(
+                    icon = ArkhamIcons.ArrowDown,
+                    contentDescription = "Move ${exercise.exerciseName} down",
                     enabled = canMoveDown,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("session_exercise_move_down_$exerciseIndex"),
-                ) {
-                    Icon(
-                        imageVector = ArkhamIcons.ArrowDown,
-                        contentDescription = "Move ${exercise.exerciseName} down",
-                        tint = if (canMoveDown) {
-                            ArkhamColors.PhosphorGreenDim
-                        } else {
-                            ArkhamColors.MintMuted.copy(alpha = 0.35f)
-                        },
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                IconButton(
+                    testTag = "session_exercise_move_down_$exerciseIndex",
+                    onClick = { onAction(ActiveSessionAction.MoveExerciseDown(exerciseIndex)) },
+                )
+                SessionExerciseHeaderIconButton(
+                    icon = ArkhamIcons.Swap,
+                    contentDescription = "Swap ${exercise.exerciseName}",
+                    enabled = enabled,
+                    testTag = "session_exercise_swap_$exerciseIndex",
                     onClick = { onAction(ActiveSessionAction.OpenSwapExercisePicker(exerciseIndex)) },
+                )
+                SessionExerciseHeaderIconButton(
+                    icon = ArkhamIcons.Close,
+                    contentDescription = "Remove ${exercise.exerciseName}",
                     enabled = enabled,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("session_exercise_swap_$exerciseIndex"),
-                ) {
-                    Icon(
-                        imageVector = ArkhamIcons.Swap,
-                        contentDescription = "Swap ${exercise.exerciseName}",
-                        tint = ArkhamColors.PhosphorGreenDim,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                IconButton(
+                    activeTint = ArkhamColors.AlertRed,
+                    testTag = "session_exercise_remove_$exerciseIndex",
                     onClick = { onAction(ActiveSessionAction.RemoveExercise(exerciseIndex)) },
-                    enabled = enabled,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("session_exercise_remove_$exerciseIndex"),
-                ) {
-                    Icon(
-                        imageVector = ArkhamIcons.Close,
-                        contentDescription = "Remove ${exercise.exerciseName}",
-                        tint = ArkhamColors.AlertRed,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
+                )
             }
 
             FlowRow(
@@ -1014,5 +981,30 @@ private fun UpdateRoutinePromptDialog(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SessionExerciseHeaderIconButton(
+    icon: ImageVector,
+    contentDescription: String,
+    enabled: Boolean,
+    testTag: String,
+    onClick: () -> Unit,
+    activeTint: Color = ArkhamColors.PhosphorGreenDim,
+) {
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier
+            .size(36.dp)
+            .testTag(testTag),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (enabled) activeTint else ArkhamColors.MintMuted.copy(alpha = 0.35f),
+            modifier = Modifier.size(18.dp),
+        )
     }
 }

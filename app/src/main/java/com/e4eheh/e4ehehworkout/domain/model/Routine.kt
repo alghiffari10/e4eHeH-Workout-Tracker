@@ -30,6 +30,34 @@ data class Routine(
     val updatedAt: Instant,
     val deletedAt: Instant?,
     val syncStatus: SyncStatus,
+) {
+    fun matchesStructure(slots: List<RoutineExerciseSlot>): Boolean =
+        exercises.map { RoutineExerciseSlot(it.exerciseId, it.defaultTargetSets) } == slots
+
+    fun toUpdatedInput(slots: List<RoutineExerciseSlot>): RoutineInput {
+        val existingIdsByExerciseId = HashMap<String, ArrayDeque<String>>()
+        exercises.forEach { entry ->
+            existingIdsByExerciseId.getOrPut(entry.exerciseId) { ArrayDeque() }.addLast(entry.id)
+        }
+        val updatedExercises = slots.map { slot ->
+            RoutineExerciseInput(
+                exerciseId = slot.exerciseId,
+                defaultTargetSets = slot.defaultTargetSets,
+                id = existingIdsByExerciseId[slot.exerciseId]?.removeFirstOrNull(),
+            )
+        }
+        return RoutineInput(
+            name = name,
+            discipline = discipline,
+            exercises = updatedExercises,
+        )
+    }
+}
+
+/** Structural comparison slot pairing an Exercise id with its target Set count. */
+data class RoutineExerciseSlot(
+    val exerciseId: String,
+    val defaultTargetSets: Int?,
 )
 
 /** Input entry for creating or updating an Exercise slot within a Routine. */
