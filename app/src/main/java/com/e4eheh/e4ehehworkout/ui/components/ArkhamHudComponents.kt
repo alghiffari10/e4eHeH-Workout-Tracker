@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,8 +22,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -30,6 +34,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
@@ -245,19 +250,80 @@ fun ArkhamSecondaryButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
+    val borderColor = if (enabled) {
+        ArkhamColors.TerminalEmeraldBright
+    } else {
+        ArkhamColors.TerminalEmerald.copy(alpha = 0.45f)
+    }
     OutlinedButton(
         onClick = onClick,
         modifier = modifier,
+        enabled = enabled,
         shape = ArkhamShapes.chip,
-        border = BorderStroke(1.dp, ArkhamColors.TerminalEmeraldBright),
+        border = BorderStroke(1.dp, borderColor),
         colors = ButtonDefaults.outlinedButtonColors(
             contentColor = ArkhamColors.MintWhite,
+            disabledContentColor = ArkhamColors.MintMuted.copy(alpha = 0.5f),
         ),
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelLarge,
         )
+    }
+}
+
+/** Shared Arkham HUD text field color palette. */
+@Composable
+fun arkhamTextFieldColors(): TextFieldColors = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = ArkhamColors.PhosphorGreen,
+    unfocusedBorderColor = ArkhamColors.TerminalEmerald,
+    errorBorderColor = ArkhamColors.AlertRed,
+    focusedLabelColor = ArkhamColors.PhosphorGreen,
+    unfocusedLabelColor = ArkhamColors.MintMuted,
+    cursorColor = ArkhamColors.PhosphorGreen,
+    focusedTextColor = ArkhamColors.MintWhite,
+    unfocusedTextColor = ArkhamColors.MintWhite,
+    focusedContainerColor = ArkhamColors.ObsidianPanel,
+    unfocusedContainerColor = ArkhamColors.ObsidianPanel,
+)
+
+/** Labeled FlowRow of selectable tactical chips for enums and preset choices. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun <T> ArkhamChipSelectorSection(
+    title: String,
+    options: List<T>,
+    selected: T?,
+    labelOf: (T) -> String,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+    testTagOf: ((T) -> String)? = null,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = title,
+            style = ArkhamTelemetryStyle,
+            color = ArkhamColors.PhosphorGreenDim,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            options.forEach { option ->
+                val chipModifier = testTagOf?.invoke(option)?.let { Modifier.testTag(it) } ?: Modifier
+                ArkhamHudChip(
+                    label = labelOf(option),
+                    selected = selected == option,
+                    onClick = { onSelect(option) },
+                    modifier = chipModifier,
+                )
+            }
+        }
     }
 }

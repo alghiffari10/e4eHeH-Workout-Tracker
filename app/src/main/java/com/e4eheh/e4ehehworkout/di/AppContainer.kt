@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.room.Room
 import com.e4eheh.e4ehehworkout.data.local.WorkoutDatabase
 import com.e4eheh.e4ehehworkout.data.repository.DefaultExerciseRepository
+import com.e4eheh.e4ehehworkout.data.repository.DefaultUserPreferencesRepository
 import com.e4eheh.e4ehehworkout.domain.repository.ExerciseRepository
+import com.e4eheh.e4ehehworkout.domain.repository.UserPreferencesRepository
 import java.time.Clock
 
 /** Manual dependency graph for production and in-memory test environments. */
@@ -12,6 +14,7 @@ class AppContainer private constructor(
     val clock: Clock,
     private val database: WorkoutDatabase,
     val exerciseRepository: ExerciseRepository,
+    val userPreferencesRepository: UserPreferencesRepository,
 ) {
     fun close() {
         database.close()
@@ -26,7 +29,9 @@ class AppContainer private constructor(
                 context.applicationContext,
                 WorkoutDatabase::class.java,
                 WorkoutDatabase.DATABASE_NAME,
-            ).build()
+            )
+                .addMigrations(WorkoutDatabase.MIGRATION_1_2)
+                .build()
             return buildContainer(database, clock)
         }
 
@@ -51,6 +56,10 @@ class AppContainer private constructor(
             database = database,
             exerciseRepository = DefaultExerciseRepository(
                 exerciseDao = database.exerciseDao(),
+                clock = clock,
+            ),
+            userPreferencesRepository = DefaultUserPreferencesRepository(
+                userPreferencesDao = database.userPreferencesDao(),
                 clock = clock,
             ),
         )

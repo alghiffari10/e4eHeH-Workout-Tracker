@@ -1,0 +1,143 @@
+package com.e4eheh.e4ehehworkout.ui.screens.profile
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.e4eheh.e4ehehworkout.domain.model.DistanceUnit
+import com.e4eheh.e4ehehworkout.domain.model.UserPreferences
+import com.e4eheh.e4ehehworkout.domain.model.WeightUnit
+import com.e4eheh.e4ehehworkout.domain.repository.UserPreferencesRepository
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+/** UI state for the Profile tab preferences and sync placeholder screen. */
+data class ProfileUiState(
+    val preferences: UserPreferences = UserPreferences(),
+    val displayNameDraft: String = UserPreferences.DEFAULT_DISPLAY_NAME,
+    val displayNameError: String? = null,
+    val displayNameSaved: Boolean = false,
+) {
+    val hasUnsavedDisplayName: Boolean
+        get() = displayNameDraft.trim() != preferences.displayName
+}
+
+/** User actions dispatched from the Profile preferences UI. */
+sealed interface ProfileAction {
+    data class UpdateDisplayNameDraft(val displayName: String) : ProfileAction
+    data object SaveDisplayName : ProfileAction
+    data class SelectWeightUnit(val weightUnit: WeightUnit) : ProfileAction
+    data class SelectDistanceUnit(val distanceUnit: DistanceUnit) : ProfileAction
+    data class AdjustRestTimer(val deltaSeconds: Int) : ProfileAction
+    data class SelectRestTimer(val durationSeconds: Int) : ProfileAction
+}
+
+/** Coordinates Profile preference observations and updates. */
+class ProfileViewModel(
+    private val userPreferencesRepository: UserPreferencesRepository,
+) : ViewModel() {
+    private val displayNameDraftOverride = MutableStateFlow<String?>(null)
+    private val displayNameError = MutableStateFlow<String?>(null)
+    private val displayNameSaved = MutableStateFlow(false)
+    private val restTimerMutex = Mutex()
+
+    val uiState: StateFlow<ProfileUiState> = combine(
+        userPreferencesRepository.observePreferences().onEach { persisted ->
+            displayNameDraftOverride.update { draft ->
+                if (draft == persisted.displayName) null else draft
+            }
+        },
+        displayNameDraftOverride,
+        displayNameError,
+        displayNameSaved,
+    ) { preferences, draftOverride, error, saved ->
+        ProfileUiState(
+            preferences = preferences,
+            displayNameDraft = draftOverride ?: preferences.displayName,
+            displayNameError = error,
+            displayNameSaved = saved,
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = ProfileUiState(),
+    )
+
+    fun onAction(action: ProfileAction) {
+        when (action) {
+            is ProfileAction.UpdateDisplayNameDraft -> {
+                displayNameDraftOverride.value = action.displayName
+                displayNameError.value = null
+                displayNameSaved.value = false
+            }
+
+            ProfileAction.SaveDisplayName -> saveDisplayName()
+
+            is ProfileAction.SelectWeightUnit -> {
+                viewModelScope.launch {
+                    userPreferencesRepository.updateWeightUnit(action.weightUnit)
+                }
+            }
+
+            is ProfileAction.SelectDistanceUnit -> {
+                viewModelScope.launch {
+                    userPreferencesRepository.updateDistanceUnit(action.distanceUnit)
+                }
+            }
+
+            is ProfileAction.AdjustRestTimer -> {
+                viewModelScope.launch {
+                    restTimerMutex.withLock {
+                        val current = userPreferencesRepository.getPreferences().defaultRestTimerSeconds
+                        val next = (current + action.deltaSeconds).coerceIn(
+                            UserPreferences.MIN_REST_TIMER_SECONDS,
+                            UserPreferences.MAX_REST_TIMER_SECONDS,
+                        )
+                        userPreferencesRepository.updateDefaultRestTimerSeconds(next)
+                    }
+                }
+            }
+
+            is ProfileAction.SelectRestTimer -> {
+                viewModelScope.launch {
+                    restTimerMutex.withLock {
+                        userPreferencesRepository.updateDefaultRestTimerSeconds(action.durationSeconds)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun saveDisplayName() {
+        val trimmed = uiState.value.displayNameDraft.trim()
+        if (trimmed.isEmpty()) {
+            displayNameError.value = "Display name is required."
+            displayNameSaved.value = false
+            return
+        }
+
+        displayNameError.value = null
+        displayNameDraftOverride.value = trimmed
+        viewModelScope.launch {
+            userPreferencesRepository.updateDisplayName(trimmed)
+            displayNameSaved.value = true
+        }
+    }
+
+    class Factory(
+        private val userPreferencesRepository: UserPreferencesRepository,
+    ) : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            require(modelClass.isAssignableFrom(ProfileViewModel::class.java))
+            return ProfileViewModel(userPreferencesRepository) as T
+        }
+    }
+}

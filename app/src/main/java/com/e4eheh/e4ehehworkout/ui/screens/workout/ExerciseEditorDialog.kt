@@ -2,8 +2,6 @@ package com.e4eheh.e4ehehworkout.ui.screens.workout
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -11,7 +9,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -22,17 +19,16 @@ import androidx.compose.ui.window.DialogProperties
 import com.e4eheh.e4ehehworkout.domain.model.Discipline
 import com.e4eheh.e4ehehworkout.domain.model.Exercise
 import com.e4eheh.e4ehehworkout.domain.model.TrackingMode
-import com.e4eheh.e4ehehworkout.ui.components.ArkhamHudChip
+import com.e4eheh.e4ehehworkout.ui.components.ArkhamChipSelectorSection
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamHudPanel
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamPrimaryButton
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSecondaryButton
+import com.e4eheh.e4ehehworkout.ui.components.arkhamTextFieldColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamShapes
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryLargeStyle
-import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryStyle
 
 /** Modal chamfered HUD dialog for creating or editing an Exercise. */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ExerciseEditorDialog(
     state: ExerciseEditorState,
@@ -43,18 +39,7 @@ fun ExerciseEditorDialog(
     onDismiss: () -> Unit,
     onSave: () -> Unit,
 ) {
-    val fieldColors = OutlinedTextFieldDefaults.colors(
-        focusedBorderColor = ArkhamColors.PhosphorGreen,
-        unfocusedBorderColor = ArkhamColors.TerminalEmerald,
-        errorBorderColor = ArkhamColors.AlertRed,
-        focusedLabelColor = ArkhamColors.PhosphorGreen,
-        unfocusedLabelColor = ArkhamColors.MintMuted,
-        cursorColor = ArkhamColors.PhosphorGreen,
-        focusedTextColor = ArkhamColors.MintWhite,
-        unfocusedTextColor = ArkhamColors.MintWhite,
-        focusedContainerColor = ArkhamColors.ObsidianPanel,
-        unfocusedContainerColor = ArkhamColors.ObsidianPanel,
-    )
+    val fieldColors = arkhamTextFieldColors()
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -100,7 +85,7 @@ fun ExerciseEditorDialog(
                         .testTag("exercise_name_input"),
                 )
 
-                ChipSelectorSection(
+                ArkhamChipSelectorSection(
                     title = "DISCIPLINE",
                     options = Discipline.entries,
                     selected = state.discipline,
@@ -108,7 +93,7 @@ fun ExerciseEditorDialog(
                     onSelect = onDisciplineChange,
                 )
 
-                ChipSelectorSection(
+                ArkhamChipSelectorSection(
                     title = "TRACKING MODE",
                     options = TrackingMode.entries,
                     selected = state.trackingMode,
@@ -144,36 +129,6 @@ fun ExerciseEditorDialog(
                         modifier = Modifier.weight(1f),
                     )
                 }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun <T> ChipSelectorSection(
-    title: String,
-    options: List<T>,
-    selected: T,
-    labelOf: (T) -> String,
-    onSelect: (T) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = title,
-            style = ArkhamTelemetryStyle,
-            color = ArkhamColors.PhosphorGreenDim,
-        )
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            options.forEach { option ->
-                ArkhamHudChip(
-                    label = labelOf(option),
-                    selected = selected == option,
-                    onClick = { onSelect(option) },
-                )
             }
         }
     }

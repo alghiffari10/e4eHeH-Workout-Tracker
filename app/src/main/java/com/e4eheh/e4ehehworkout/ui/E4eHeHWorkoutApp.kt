@@ -41,6 +41,7 @@ import com.e4eheh.e4ehehworkout.ui.components.ArkhamSecondaryButton
 import com.e4eheh.e4ehehworkout.ui.navigation.TopLevelTab
 import com.e4eheh.e4ehehworkout.ui.screens.home.HomeScreen
 import com.e4eheh.e4ehehworkout.ui.screens.profile.ProfileScreen
+import com.e4eheh.e4ehehworkout.ui.screens.profile.ProfileViewModel
 import com.e4eheh.e4ehehworkout.ui.screens.progress.ProgressScreen
 import com.e4eheh.e4ehehworkout.ui.screens.workout.ExerciseLibraryViewModel
 import com.e4eheh.e4ehehworkout.ui.screens.workout.WorkoutScreen
@@ -115,7 +116,14 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
                         ProgressScreen()
                     }
                     composable(TopLevelTab.PROFILE.route) {
-                        ProfileScreen()
+                        val viewModel: ProfileViewModel = viewModel(
+                            factory = ProfileViewModel.Factory(appContainer.userPreferencesRepository),
+                        )
+                        val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                        ProfileScreen(
+                            uiState = uiState,
+                            onAction = viewModel::onAction,
+                        )
                     }
                 }
             }
