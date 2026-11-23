@@ -18,4 +18,6 @@ interface UserPreferencesRepository {
     suspend fun updateDistanceUnit(distanceUnit: DistanceUnit): UserPreferences
 
     suspend fun updateDefaultRestTimerSeconds(durationSeconds: Int): UserPreferences
+
+    suspend fun adjustDefaultRestTimerSeconds(deltaSeconds: Int): UserPreferences
 }

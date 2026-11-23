@@ -60,4 +60,15 @@ class ProfileViewModelTest {
         assertEquals(expected, viewModel.uiState.first().preferences)
         collectorJob.cancel()
     }
+
+    @Test
+    fun saveDisplayName_beforeUiStateSubscription_readsLatestDraftOverride() = runTest(testDispatcher) {
+        val viewModel = ProfileViewModel(repository)
+
+        viewModel.onAction(ProfileAction.UpdateDisplayNameDraft("  Robin  "))
+        viewModel.onAction(ProfileAction.SaveDisplayName)
+        advanceUntilIdle()
+
+        assertEquals("Robin", repository.getPreferences().displayName)
+    }
 }

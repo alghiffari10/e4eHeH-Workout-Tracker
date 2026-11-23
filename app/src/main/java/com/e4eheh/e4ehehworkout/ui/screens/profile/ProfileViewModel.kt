@@ -15,8 +15,6 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /** UI state for the Profile tab preferences and sync placeholder screen. */
 data class ProfileUiState(
@@ -46,7 +44,6 @@ class ProfileViewModel(
     private val displayNameDraftOverride = MutableStateFlow<String?>(null)
     private val displayNameError = MutableStateFlow<String?>(null)
     private val displayNameSaved = MutableStateFlow(false)
-    private val restTimerMutex = Mutex()
 
     val uiState: StateFlow<ProfileUiState> = combine(
         userPreferencesRepository.observePreferences().onEach { persisted ->
@@ -94,29 +91,21 @@ class ProfileViewModel(
 
             is ProfileAction.AdjustRestTimer -> {
                 viewModelScope.launch {
-                    restTimerMutex.withLock {
-                        val current = userPreferencesRepository.getPreferences().defaultRestTimerSeconds
-                        val next = (current + action.deltaSeconds).coerceIn(
-                            UserPreferences.MIN_REST_TIMER_SECONDS,
-                            UserPreferences.MAX_REST_TIMER_SECONDS,
-                        )
-                        userPreferencesRepository.updateDefaultRestTimerSeconds(next)
-                    }
+                    userPreferencesRepository.adjustDefaultRestTimerSeconds(action.deltaSeconds)
                 }
             }
 
             is ProfileAction.SelectRestTimer -> {
                 viewModelScope.launch {
-                    restTimerMutex.withLock {
-                        userPreferencesRepository.updateDefaultRestTimerSeconds(action.durationSeconds)
-                    }
+                    userPreferencesRepository.updateDefaultRestTimerSeconds(action.durationSeconds)
                 }
             }
         }
     }
 
     private fun saveDisplayName() {
-        val trimmed = uiState.value.displayNameDraft.trim()
+        val currentDraft = displayNameDraftOverride.value ?: uiState.value.preferences.displayName
+        val trimmed = currentDraft.trim()
         if (trimmed.isEmpty()) {
             displayNameError.value = "Display name is required."
             displayNameSaved.value = false

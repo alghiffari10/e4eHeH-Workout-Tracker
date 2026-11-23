@@ -7,7 +7,11 @@ import com.e4eheh.e4ehehworkout.domain.model.UserPreferences
 import com.e4eheh.e4ehehworkout.domain.model.WeightUnit
 import java.time.Instant
 
-/** Room singleton row persisting the athlete's local Batcomputer preferences. */
+/**
+ * Room singleton row persisting device-local Batcomputer preferences.
+ * Intentionally omits sync tombstones (`deletedAt` / `syncStatus` from ADR-0001)
+ * because UserPreferences are local-only per the personal-workout-tracker spec.
+ */
 @Entity(tableName = "user_preferences")
 data class UserPreferencesEntity(
     @PrimaryKey val id: String = SINGLETON_ID,

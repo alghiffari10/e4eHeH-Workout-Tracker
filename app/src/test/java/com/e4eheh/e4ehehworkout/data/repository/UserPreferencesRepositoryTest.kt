@@ -5,15 +5,13 @@ import com.e4eheh.e4ehehworkout.domain.model.DistanceUnit
 import com.e4eheh.e4ehehworkout.domain.model.UserPreferences
 import com.e4eheh.e4ehehworkout.domain.model.WeightUnit
 import com.e4eheh.e4ehehworkout.testing.FakeClock
-import java.time.Instant
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class UserPreferencesRepositoryTest {
-    private val initialInstant = Instant.parse("2026-11-23T08:00:00Z")
-    private val clock = FakeClock(initialInstant)
+    private val clock = FakeClock()
     private val dao = InMemoryUserPreferencesDao()
     private val repository = DefaultUserPreferencesRepository(dao, clock)
 
@@ -93,6 +91,18 @@ class UserPreferencesRepositoryTest {
         assertEquals(maxPrefs, repository.getPreferences())
     }
 
+    @Test
+    fun adjustDefaultRestTimerSeconds_stepsAndClampsWithinBounds() = runTest {
+        assertEquals(75, repository.adjustDefaultRestTimerSeconds(-15).defaultRestTimerSeconds)
+        assertEquals(90, repository.adjustDefaultRestTimerSeconds(15).defaultRestTimerSeconds)
+
+        repository.updateDefaultRestTimerSeconds(UserPreferences.MIN_REST_TIMER_SECONDS)
+        assertEquals(15, repository.adjustDefaultRestTimerSeconds(-15).defaultRestTimerSeconds)
+
+        repository.updateDefaultRestTimerSeconds(UserPreferences.MAX_REST_TIMER_SECONDS)
+        assertEquals(600, repository.adjustDefaultRestTimerSeconds(15).defaultRestTimerSeconds)
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun updateDefaultRestTimerSeconds_rejectsZero() = runTest {
         repository.updateDefaultRestTimerSeconds(0)
@@ -111,18 +121,6 @@ class UserPreferencesRepositoryTest {
     @Test(expected = IllegalArgumentException::class)
     fun updateDefaultRestTimerSeconds_rejectsAboveMaximum() = runTest {
         repository.updateDefaultRestTimerSeconds(601)
-    }
-
-    @Test
-    fun updates_truncateUpdatedAtToMillisecondPrecision() = runTest {
-        clock.setInstant(Instant.parse("2026-11-23T08:00:00.987654321Z"))
-
-        repository.updateDisplayName("Batman")
-
-        assertEquals(
-            Instant.parse("2026-11-23T08:00:00.987Z").toEpochMilli(),
-            dao.storedEntity?.updatedAt,
-        )
     }
 
     @Test

@@ -14,42 +14,32 @@ object UnitConverter {
     const val KM_PER_MI = 1.609344
 
     fun weightToDisplay(canonicalKg: Double, unit: WeightUnit): Double =
-        convert(canonicalKg) { value ->
-            when (unit) {
-                WeightUnit.KG -> value
-                WeightUnit.LB -> value / KG_PER_LB
-            }
-        }
+        toDisplay(canonicalKg, unit.kgPerUnit)
 
     fun weightToCanonicalKg(displayValue: Double, unit: WeightUnit): Double =
-        convert(displayValue) { value ->
-            when (unit) {
-                WeightUnit.KG -> value
-                WeightUnit.LB -> value * KG_PER_LB
-            }
-        }
+        toCanonical(displayValue, unit.kgPerUnit)
 
     fun distanceToDisplay(canonicalKm: Double, unit: DistanceUnit): Double =
-        convert(canonicalKm) { value ->
-            when (unit) {
-                DistanceUnit.KM -> value
-                DistanceUnit.MI -> value / KM_PER_MI
-            }
-        }
+        toDisplay(canonicalKm, unit.kmPerUnit)
 
     fun distanceToCanonicalKm(displayValue: Double, unit: DistanceUnit): Double =
-        convert(displayValue) { value ->
-            when (unit) {
-                DistanceUnit.KM -> value
-                DistanceUnit.MI -> value * KM_PER_MI
-            }
-        }
+        toCanonical(displayValue, unit.kmPerUnit)
 
     fun formatWeight(canonicalKg: Double, unit: WeightUnit): String =
         "${formatDecimal(weightToDisplay(canonicalKg, unit))} ${unit.symbol}"
 
     fun formatDistance(canonicalKm: Double, unit: DistanceUnit): String =
         "${formatDecimal(distanceToDisplay(canonicalKm, unit))} ${unit.symbol}"
+
+    private fun toDisplay(canonicalValue: Double, canonicalPerUnit: Double): Double =
+        convert(canonicalValue) { value ->
+            if (canonicalPerUnit == 1.0) value else value / canonicalPerUnit
+        }
+
+    private fun toCanonical(displayValue: Double, canonicalPerUnit: Double): Double =
+        convert(displayValue) { value ->
+            if (canonicalPerUnit == 1.0) value else value * canonicalPerUnit
+        }
 
     private inline fun convert(value: Double, transform: (Double) -> Double): Double {
         require(value.isFinite() && value >= 0.0) {

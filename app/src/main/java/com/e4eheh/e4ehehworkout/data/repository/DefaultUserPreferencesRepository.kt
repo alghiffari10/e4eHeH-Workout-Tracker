@@ -50,6 +50,15 @@ class DefaultUserPreferencesRepository(
         return mutate { it.copy(defaultRestTimerSeconds = durationSeconds) }
     }
 
+    override suspend fun adjustDefaultRestTimerSeconds(deltaSeconds: Int): UserPreferences =
+        mutate { current ->
+            val next = (current.defaultRestTimerSeconds + deltaSeconds).coerceIn(
+                UserPreferences.MIN_REST_TIMER_SECONDS,
+                UserPreferences.MAX_REST_TIMER_SECONDS,
+            )
+            current.copy(defaultRestTimerSeconds = next)
+        }
+
     private suspend fun mutate(transform: (UserPreferences) -> UserPreferences): UserPreferences =
         writeMutex.withLock {
             val current = userPreferencesDao.get()?.toDomain() ?: UserPreferences()

@@ -94,7 +94,7 @@ private fun OperatorIdentityPanel(
         else -> "ACTIVE CALLSIGN"
     }
     val statusColor = if (uiState.hasUnsavedDisplayName) {
-        ArkhamColors.TacticalAmber
+        ArkhamColors.MintWhite
     } else {
         ArkhamColors.PhosphorGreenDim
     }
@@ -279,7 +279,6 @@ private fun SyncPlaceholderPanel() {
             )
             ArkhamHudBadge(
                 label = "OFFLINE ONLY",
-                accentColor = ArkhamColors.TacticalAmber,
             )
         }
         Spacer(modifier = Modifier.height(10.dp))
