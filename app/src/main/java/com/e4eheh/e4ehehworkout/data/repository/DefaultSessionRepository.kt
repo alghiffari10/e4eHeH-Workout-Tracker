@@ -176,10 +176,72 @@ class DefaultSessionRepository(
         }
 
     override suspend fun saveDraft(id: String, input: SessionDraftInput): Session =
-        persistSessionUpdate(id = id, input = input, complete = false)
+        persistSessionUpdate(id = id, input = input, mode = SessionPersistMode.LiveDraft)
 
     override suspend fun completeSession(id: String, input: SessionDraftInput): Session =
-        persistSessionUpdate(id = id, input = input, complete = true)
+        persistSessionUpdate(id = id, input = input, mode = SessionPersistMode.CompleteLive)
+
+    override suspend fun createCompletedSession(
+        startedAt: Instant,
+        durationSeconds: Long,
+        input: SessionDraftInput,
+        routineId: String?,
+    ): Session {
+        require(durationSeconds >= 0L) {
+            "Session duration must be non-negative, got $durationSeconds"
+        }
+        val normalized = normalizeAndValidateDraft(input)
+
+        return writeMutex.withLock {
+            val nowEpoch = nowMillis().toEpochMilli()
+            val sessionId = UUID.randomUUID().toString()
+            val sessionEntity = SessionEntity(
+                id = sessionId,
+                routineId = routineId,
+                title = normalized.title.ifEmpty { defaultSessionTitle(normalized.discipline) },
+                discipline = normalized.discipline.name,
+                status = SessionStatus.COMPLETED.name,
+                startedAt = startedAt.toEpochMilli(),
+                completedAt = startedAt.plusSeconds(durationSeconds).toEpochMilli(),
+                durationSeconds = durationSeconds,
+                notes = normalized.notes,
+                createdAt = nowEpoch,
+                updatedAt = nowEpoch,
+                deletedAt = null,
+                syncStatus = SyncStatus.PENDING.name,
+            )
+            val graph = buildFreshSessionGraph(
+                sessionId = sessionId,
+                exercises = normalized.exercises,
+                nowEpoch = nowEpoch,
+            )
+            sessionDao.upsertSessionGraph(
+                session = sessionEntity,
+                exercises = graph.exercises,
+                sets = graph.sets,
+            )
+            sessionEntity.toDomain(graph.domainExercises)
+        }
+    }
+
+    override suspend fun updateCompletedSession(
+        id: String,
+        startedAt: Instant,
+        durationSeconds: Long,
+        input: SessionDraftInput,
+    ): Session {
+        require(durationSeconds >= 0L) {
+            "Session duration must be non-negative, got $durationSeconds"
+        }
+        return persistSessionUpdate(
+            id = id,
+            input = input,
+            mode = SessionPersistMode.CompletedEdit(
+                startedAt = startedAt,
+                durationSeconds = durationSeconds,
+            ),
+        )
+    }
 
     override suspend fun softDelete(id: String): Session = writeMutex.withLock {
         val existing = sessionDao.getWithExercisesById(id)
@@ -219,10 +281,75 @@ class DefaultSessionRepository(
         ).toDomain(includeDeletedChildren = true)
     }
 
+    /** Lifecycle transition requested by a Session persistence call. */
+    private sealed interface SessionPersistMode {
+        /** Auto-save of an `IN_PROGRESS` Session that keeps its running timing. */
+        data object LiveDraft : SessionPersistMode
+
+        /** Completion of a live Session, deriving timing from the clock. */
+        data object CompleteLive : SessionPersistMode
+
+        /** Edit of an existing `COMPLETED` Session with explicit backdated timing. */
+        data class CompletedEdit(
+            val startedAt: Instant,
+            val durationSeconds: Long,
+        ) : SessionPersistMode
+    }
+
+    private data class FreshSessionGraph(
+        val exercises: List<SessionExerciseEntity>,
+        val sets: List<SessionSetEntity>,
+        val domainExercises: List<SessionExercise>,
+    )
+
+    private fun buildFreshSessionGraph(
+        sessionId: String,
+        exercises: List<SessionExerciseDraftInput>,
+        nowEpoch: Long,
+    ): FreshSessionGraph {
+        val exerciseEntities = ArrayList<SessionExerciseEntity>(exercises.size)
+        val setEntities = ArrayList<SessionSetEntity>()
+        val domainExercises = ArrayList<SessionExercise>(exercises.size)
+
+        exercises.forEachIndexed { exerciseIndex, draft ->
+            val exerciseEntity = reconcileExerciseEntity(
+                sessionId = sessionId,
+                existingEx = null,
+                draft = draft,
+                sortOrder = exerciseIndex,
+                nowEpoch = nowEpoch,
+            )
+            exerciseEntities += exerciseEntity
+
+            val domainSets = draft.sets.mapIndexed { setIndex, setDraft ->
+                val setEntity = reconcileSetEntity(
+                    sessionExerciseId = exerciseEntity.id,
+                    trackingMode = draft.trackingMode,
+                    existingSet = null,
+                    draft = setDraft,
+                    sortOrder = setIndex,
+                    nowEpoch = nowEpoch,
+                )
+                setEntities += setEntity
+                setEntity.toDomain()
+            }
+            domainExercises += exerciseEntity.toDomain(domainSets)
+        }
+
+        return FreshSessionGraph(
+            exercises = exerciseEntities,
+            sets = setEntities,
+            domainExercises = domainExercises,
+        )
+    }
+
+    private fun defaultSessionTitle(discipline: Discipline): String =
+        "${discipline.displayName} Session"
+
     private suspend fun persistSessionUpdate(
         id: String,
         input: SessionDraftInput,
-        complete: Boolean,
+        mode: SessionPersistMode,
     ): Session {
         val normalized = normalizeAndValidateDraft(input)
         val incomingExerciseIds = normalized.exercises.map { it.id }
@@ -232,8 +359,17 @@ class DefaultSessionRepository(
             val existing = sessionDao.getWithExercisesById(id)
                 ?.takeIf { it.session.deletedAt == null }
                 ?: throw NoSuchElementException("Active Session not found for id=$id")
-            check(existing.session.status == SessionStatus.IN_PROGRESS.name) {
-                "Cannot modify completed Session id=$id"
+            val expectedStatus = if (mode is SessionPersistMode.CompletedEdit) {
+                SessionStatus.COMPLETED
+            } else {
+                SessionStatus.IN_PROGRESS
+            }
+            check(existing.session.status == expectedStatus.name) {
+                if (mode is SessionPersistMode.CompletedEdit) {
+                    "Cannot edit Session id=$id because it is not completed"
+                } else {
+                    "Cannot modify completed Session id=$id"
+                }
             }
 
             val existingExercisesById = existing.exercises.associateBy { it.sessionExercise.id }
@@ -262,23 +398,38 @@ class DefaultSessionRepository(
 
             val now = nowMillis()
             val nowEpoch = now.toEpochMilli()
-            val resolvedTitle = if (complete && normalized.title.isEmpty()) {
-                "${normalized.discipline.displayName} Session"
+            val isComplete = mode !is SessionPersistMode.LiveDraft
+            val resolvedTitle = if (isComplete && normalized.title.isEmpty()) {
+                defaultSessionTitle(normalized.discipline)
             } else {
                 normalized.title
             }
-            val startedAtInstant = Instant.ofEpochMilli(existing.session.startedAt)
-            val resolvedDurationSeconds = if (complete) {
-                Duration.between(startedAtInstant, now).seconds.coerceAtLeast(0L)
-            } else {
-                existing.session.durationSeconds
+            val startedAtInstant = when (mode) {
+                is SessionPersistMode.CompletedEdit -> mode.startedAt
+                SessionPersistMode.LiveDraft, SessionPersistMode.CompleteLive ->
+                    Instant.ofEpochMilli(existing.session.startedAt)
+            }
+            val resolvedDurationSeconds = when (mode) {
+                SessionPersistMode.LiveDraft -> existing.session.durationSeconds
+                SessionPersistMode.CompleteLive ->
+                    Duration.between(startedAtInstant, now).seconds.coerceAtLeast(0L)
+                is SessionPersistMode.CompletedEdit -> mode.durationSeconds
             }
 
             val updatedSession = existing.session.copy(
                 title = resolvedTitle,
                 discipline = normalized.discipline.name,
-                status = if (complete) SessionStatus.COMPLETED.name else SessionStatus.IN_PROGRESS.name,
-                completedAt = if (complete) nowEpoch else null,
+                status = if (isComplete) {
+                    SessionStatus.COMPLETED.name
+                } else {
+                    SessionStatus.IN_PROGRESS.name
+                },
+                startedAt = startedAtInstant.toEpochMilli(),
+                completedAt = if (isComplete) {
+                    startedAtInstant.plusSeconds(resolvedDurationSeconds).toEpochMilli()
+                } else {
+                    null
+                },
                 durationSeconds = resolvedDurationSeconds,
                 notes = normalized.notes,
                 updatedAt = nowEpoch,

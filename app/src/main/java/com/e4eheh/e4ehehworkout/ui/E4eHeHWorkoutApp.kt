@@ -46,6 +46,7 @@ import com.e4eheh.e4ehehworkout.ui.components.ArkhamHudBackground
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamHudPanel
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSecondaryButton
 import com.e4eheh.e4ehehworkout.ui.navigation.ActiveSessionRoute
+import com.e4eheh.e4ehehworkout.ui.navigation.SessionEditorRoute
 import com.e4eheh.e4ehehworkout.ui.navigation.TopLevelTab
 import com.e4eheh.e4ehehworkout.ui.screens.home.HomeScreen
 import com.e4eheh.e4ehehworkout.ui.screens.home.HomeViewModel
@@ -54,6 +55,8 @@ import com.e4eheh.e4ehehworkout.ui.screens.profile.ProfileViewModel
 import com.e4eheh.e4ehehworkout.ui.screens.progress.ProgressScreen
 import com.e4eheh.e4ehehworkout.ui.screens.session.ActiveSessionScreen
 import com.e4eheh.e4ehehworkout.ui.screens.session.ActiveSessionViewModel
+import com.e4eheh.e4ehehworkout.ui.screens.session.SessionEditorScreen
+import com.e4eheh.e4ehehworkout.ui.screens.session.SessionEditorViewModel
 import com.e4eheh.e4ehehworkout.ui.screens.workout.WorkoutScreen
 import com.e4eheh.e4ehehworkout.ui.screens.workout.WorkoutViewModel
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
@@ -140,6 +143,13 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
                                 }
                             },
                             onNavigateToWorkout = { navigateToTab(TopLevelTab.WORKOUT) },
+                            onOpenCompletedSession = { sessionId ->
+                                navController.navigate(
+                                    SessionEditorRoute.createDetailRoute(sessionId),
+                                ) {
+                                    launchSingleTop = true
+                                }
+                            },
                         )
                     }
                     composable(TopLevelTab.WORKOUT.route) {
@@ -197,6 +207,35 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
                             onExitSession = { navController.popBackStack() },
                         )
                     }
+                    composable(
+                        route = SessionEditorRoute.PATTERN,
+                        arguments = listOf(
+                            navArgument(SessionEditorRoute.ARG_SESSION_ID) {
+                                type = NavType.StringType
+                                nullable = true
+                                defaultValue = null
+                            },
+                        ),
+                    ) { backStackEntry ->
+                        val sessionId = backStackEntry.arguments
+                            ?.getString(SessionEditorRoute.ARG_SESSION_ID)
+                        val viewModel: SessionEditorViewModel = viewModel(
+                            factory = SessionEditorViewModel.Factory(
+                                sessionId = sessionId,
+                                sessionRepository = appContainer.sessionRepository,
+                                exerciseRepository = appContainer.exerciseRepository,
+                                userPreferencesRepository = appContainer.userPreferencesRepository,
+                                clock = appContainer.clock,
+                                routineRepository = appContainer.routineRepository,
+                            ),
+                        )
+                        val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                        SessionEditorScreen(
+                            uiState = uiState,
+                            onAction = viewModel::onAction,
+                            onExit = { navController.popBackStack() },
+                        )
+                    }
                 }
             }
 
@@ -204,6 +243,12 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
                 QuickActionSheet(
                     isStartingSession = shellUiState.isStartingSession,
                     onStartLiveBlankSession = appShellViewModel::startLiveBlankSession,
+                    onLogBackdatedSession = {
+                        showQuickActionSheet = false
+                        navController.navigate(SessionEditorRoute.createBackdatedRoute()) {
+                            launchSingleTop = true
+                        }
+                    },
                     onDismiss = { showQuickActionSheet = false },
                 )
             }
@@ -216,6 +261,7 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
 private fun QuickActionSheet(
     isStartingSession: Boolean,
     onStartLiveBlankSession: () -> Unit,
+    onLogBackdatedSession: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -237,32 +283,23 @@ private fun QuickActionSheet(
                 style = ArkhamTelemetryLargeStyle,
                 color = ArkhamColors.PhosphorGreen,
             )
-            ArkhamHudPanel(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("quick_action_start_live_session")
-                    .clickable(
-                        enabled = !isStartingSession,
-                        role = Role.Button,
-                        onClick = onStartLiveBlankSession,
-                    ),
+            QuickActionCard(
+                title = "Start Live Blank Session",
+                subtitle = "LIVE TIMER // AUTO-SAVED DRAFT",
                 highlighted = true,
-            ) {
-                Text(
-                    text = "Start Live Blank Session",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = ArkhamColors.MintWhite,
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "LIVE TIMER // AUTO-SAVED DRAFT",
-                    style = ArkhamTelemetryStyle,
-                    color = ArkhamColors.PhosphorGreen,
-                )
-            }
-            QuickActionStandbyCard(
+                enabled = !isStartingSession,
+                subtitleColor = ArkhamColors.PhosphorGreen,
+                testTag = "quick_action_start_live_session",
+                onClick = onStartLiveBlankSession,
+            )
+            QuickActionCard(
                 title = "Log Backdated Session",
-                subtitle = "HISTORY IMPORT PENDING MODULE",
+                subtitle = "PAST DATE & TIME // COMPLETED SNAPSHOT",
+                highlighted = false,
+                enabled = !isStartingSession,
+                subtitleColor = ArkhamColors.MintMuted,
+                testTag = "quick_action_log_backdated_session",
+                onClick = onLogBackdatedSession,
             )
             Spacer(modifier = Modifier.height(4.dp))
             ArkhamSecondaryButton(
@@ -276,11 +313,26 @@ private fun QuickActionSheet(
 }
 
 @Composable
-private fun QuickActionStandbyCard(
+private fun QuickActionCard(
     title: String,
     subtitle: String,
+    highlighted: Boolean,
+    enabled: Boolean,
+    subtitleColor: Color,
+    testTag: String,
+    onClick: () -> Unit,
 ) {
-    ArkhamHudPanel(modifier = Modifier.fillMaxWidth()) {
+    ArkhamHudPanel(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(testTag)
+            .clickable(
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick,
+            ),
+        highlighted = highlighted,
+    ) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium,
@@ -290,7 +342,7 @@ private fun QuickActionStandbyCard(
         Text(
             text = subtitle,
             style = ArkhamTelemetryStyle,
-            color = ArkhamColors.MintMuted,
+            color = subtitleColor,
         )
     }
 }

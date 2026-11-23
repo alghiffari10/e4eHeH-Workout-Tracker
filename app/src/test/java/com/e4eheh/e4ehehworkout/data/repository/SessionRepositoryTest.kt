@@ -711,4 +711,271 @@ class SessionRepositoryTest {
         )
         repository.createLiveSessionFromRoutine(routine.id)
     }
+
+    @Test
+    fun createCompletedSession_backdated_persistsChosenTimingCompletedStatusAndPendingSync() = runTest {
+        clock.setInstant(Instant.parse("2026-11-23T08:00:00Z"))
+        val createdInstant = clock.instant()
+        val startedAt = Instant.parse("2026-11-18T18:30:00Z")
+        val warmupSetId = UUID.randomUUID().toString()
+        val workingSetId = UUID.randomUUID().toString()
+
+        val created = repository.createCompletedSession(
+            startedAt = startedAt,
+            durationSeconds = 2_700L,
+            input = SessionDraftInput(
+                title = "  Notebook Migration  ",
+                discipline = Discipline.CALISTHENICS,
+                notes = "  Migrated from page 42  ",
+                exercises = listOf(
+                    SessionExerciseDraftInput(
+                        id = "ex-entry-1",
+                        exerciseId = "ex-pullup",
+                        exerciseName = "Pull-up",
+                        exerciseDiscipline = Discipline.CALISTHENICS,
+                        trackingMode = TrackingMode.REPS_AND_LOAD,
+                        sets = listOf(
+                            SessionSetDraftInput(
+                                id = warmupSetId,
+                                reps = 5,
+                                isCompleted = true,
+                                isWarmup = true,
+                            ),
+                            SessionSetDraftInput(
+                                id = workingSetId,
+                                reps = 8,
+                                loadKg = 10.0,
+                                isCompleted = true,
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertNotNull(UUID.fromString(created.id))
+        assertEquals("Notebook Migration", created.title)
+        assertEquals(Discipline.CALISTHENICS, created.discipline)
+        assertEquals(SessionStatus.COMPLETED, created.status)
+        assertEquals(startedAt, created.startedAt)
+        assertEquals(startedAt.plusSeconds(2_700L), created.completedAt)
+        assertEquals(2_700L, created.durationSeconds)
+        assertEquals("Migrated from page 42", created.notes)
+        assertEquals(createdInstant, created.createdAt)
+        assertEquals(createdInstant, created.updatedAt)
+        assertNull(created.deletedAt)
+        assertEquals(SyncStatus.PENDING, created.syncStatus)
+
+        val exercise = created.exercises.single()
+        assertEquals("Pull-up", exercise.exerciseName)
+        assertEquals(2, exercise.sets.size)
+        assertTrue(exercise.sets[0].isWarmup)
+        assertTrue(exercise.sets[0].isCompleted)
+        assertEquals(10.0, exercise.sets[1].loadKg!!, 1e-6)
+
+        assertEquals(created, repository.getById(created.id))
+        assertEquals(listOf(created), repository.observeActiveSessions().first())
+    }
+
+    @Test
+    fun createCompletedSession_blankTitleAndZeroDuration_fallsBackToDisciplineTitle_andCompletesAtStart() =
+        runTest {
+            val startedAt = Instant.parse("2026-10-01T06:00:00Z")
+
+            val created = repository.createCompletedSession(
+                startedAt = startedAt,
+                durationSeconds = 0L,
+                input = SessionDraftInput(title = "   ", discipline = Discipline.CARDIO),
+            )
+
+            assertEquals("Cardio Session", created.title)
+            assertEquals(startedAt, created.completedAt)
+            assertEquals(0L, created.durationSeconds)
+            assertEquals(SessionStatus.COMPLETED, created.status)
+        }
+
+    @Test
+    fun updateCompletedSession_editsTimingContentAndSets_tombstonesRemovedChildren_andStaysPending() =
+        runTest {
+            val originalStartedAt = Instant.parse("2026-11-10T07:00:00Z")
+            val keepExerciseId = UUID.randomUUID().toString()
+            val removedExerciseId = UUID.randomUUID().toString()
+            val keepSetId = UUID.randomUUID().toString()
+            val removedSetId = UUID.randomUUID().toString()
+            val newSetId = UUID.randomUUID().toString()
+
+            val created = repository.createCompletedSession(
+                startedAt = originalStartedAt,
+                durationSeconds = 1_800L,
+                input = SessionDraftInput(
+                    title = "Draft Entry",
+                    discipline = Discipline.CALISTHENICS,
+                    exercises = listOf(
+                        SessionExerciseDraftInput(
+                            id = keepExerciseId,
+                            exerciseId = "ex-1",
+                            exerciseName = "Dip",
+                            exerciseDiscipline = Discipline.CALISTHENICS,
+                            trackingMode = TrackingMode.REPS_AND_LOAD,
+                            sets = listOf(
+                                SessionSetDraftInput(id = keepSetId, reps = 8, loadKg = 0.0, isCompleted = true),
+                                SessionSetDraftInput(
+                                    id = removedSetId,
+                                    reps = 6,
+                                    loadKg = 0.0,
+                                    isCompleted = true,
+                                ),
+                            ),
+                        ),
+                        SessionExerciseDraftInput(
+                            id = removedExerciseId,
+                            exerciseId = "ex-2",
+                            exerciseName = "L-Sit",
+                            exerciseDiscipline = Discipline.CALISTHENICS,
+                            trackingMode = TrackingMode.HOLD_DURATION,
+                            sets = listOf(
+                                SessionSetDraftInput(
+                                    durationSeconds = 30,
+                                    isCompleted = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            )
+            clock.advanceBy(Duration.ofHours(3))
+            val editInstant = clock.instant()
+            val correctedStartedAt = Instant.parse("2026-11-11T06:15:00Z")
+
+            val updated = repository.updateCompletedSession(
+                id = created.id,
+                startedAt = correctedStartedAt,
+                durationSeconds = 3_600L,
+                input = SessionDraftInput(
+                    title = "Corrected Entry",
+                    discipline = Discipline.CONDITIONING,
+                    notes = "Backfilled",
+                    exercises = listOf(
+                        SessionExerciseDraftInput(
+                            id = keepExerciseId,
+                            exerciseId = "ex-1",
+                            exerciseName = "Dip",
+                            exerciseDiscipline = Discipline.CALISTHENICS,
+                            trackingMode = TrackingMode.REPS_AND_LOAD,
+                            sets = listOf(
+                                SessionSetDraftInput(id = keepSetId, reps = 12, loadKg = 0.0, isCompleted = true),
+                                SessionSetDraftInput(
+                                    id = newSetId,
+                                    reps = 10,
+                                    loadKg = 5.0,
+                                    isCompleted = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            )
+
+            assertEquals("Corrected Entry", updated.title)
+            assertEquals(Discipline.CONDITIONING, updated.discipline)
+            assertEquals(SessionStatus.COMPLETED, updated.status)
+            assertEquals(correctedStartedAt, updated.startedAt)
+            assertEquals(correctedStartedAt.plusSeconds(3_600L), updated.completedAt)
+            assertEquals(3_600L, updated.durationSeconds)
+            assertEquals("Backfilled", updated.notes)
+            assertEquals(editInstant, updated.updatedAt)
+            assertEquals(created.createdAt, updated.createdAt)
+            assertEquals(SyncStatus.PENDING, updated.syncStatus)
+
+            val exercise = updated.exercises.single()
+            assertEquals(keepExerciseId, exercise.id)
+            assertEquals(listOf(12, 10), exercise.sets.map { it.reps })
+            assertEquals(5.0, exercise.sets[1].loadKg!!, 1e-6)
+
+            val withDeleted = repository.getById(created.id, includeDeleted = true)!!
+            val removedExercise = withDeleted.exercises.single { it.id == removedExerciseId }
+            assertEquals(editInstant, removedExercise.deletedAt)
+            assertEquals(SyncStatus.PENDING, removedExercise.syncStatus)
+            assertTrue(removedExercise.sets.all { it.deletedAt == editInstant })
+
+            val removedSet = withDeleted.exercises.single { it.id == keepExerciseId }
+                .sets.single { it.id == removedSetId }
+            assertEquals(editInstant, removedSet.deletedAt)
+            assertEquals(SyncStatus.PENDING, removedSet.syncStatus)
+        }
+
+    @Test
+    fun softDelete_completedSession_tombstonesSessionAndNestedRowsWithPendingSync() = runTest {
+        val exerciseId = UUID.randomUUID().toString()
+        val setId = UUID.randomUUID().toString()
+        val backdated = repository.createCompletedSession(
+            startedAt = Instant.parse("2026-09-14T17:00:00Z"),
+            durationSeconds = 1_200L,
+            input = SessionDraftInput(
+                title = "Past Session",
+                discipline = Discipline.CONDITIONING,
+                exercises = listOf(
+                    SessionExerciseDraftInput(
+                        id = exerciseId,
+                        exerciseId = "ex-emom",
+                        exerciseName = "EMOM",
+                        exerciseDiscipline = Discipline.CONDITIONING,
+                        trackingMode = TrackingMode.CONDITIONING_ROUNDS,
+                        sets = listOf(
+                            SessionSetDraftInput(id = setId, rounds = 10, isCompleted = true),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        clock.advanceBy(Duration.ofDays(1))
+        val deleteInstant = clock.instant()
+
+        val deleted = repository.softDelete(backdated.id)
+
+        assertEquals(SessionStatus.COMPLETED, deleted.status)
+        assertEquals(deleteInstant, deleted.deletedAt)
+        assertEquals(SyncStatus.PENDING, deleted.syncStatus)
+        val exercise = deleted.exercises.single()
+        assertEquals(deleteInstant, exercise.deletedAt)
+        assertEquals(SyncStatus.PENDING, exercise.syncStatus)
+        val set = exercise.sets.single()
+        assertEquals(deleteInstant, set.deletedAt)
+        assertEquals(SyncStatus.PENDING, set.syncStatus)
+
+        assertNull(repository.getById(backdated.id))
+        assertNotNull(repository.getById(backdated.id, includeDeleted = true))
+        assertTrue(repository.observeActiveSessions().first().isEmpty())
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun updateCompletedSession_inProgressSession_throwsIllegalStateException() = runTest {
+        val live = repository.createLiveBlankSession()
+
+        repository.updateCompletedSession(
+            id = live.id,
+            startedAt = Instant.parse("2026-11-01T10:00:00Z"),
+            durationSeconds = 600L,
+            input = SessionDraftInput(title = "Not Completed", discipline = Discipline.CALISTHENICS),
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun createCompletedSession_negativeDuration_throwsIllegalArgumentException() = runTest {
+        repository.createCompletedSession(
+            startedAt = Instant.parse("2026-11-01T10:00:00Z"),
+            durationSeconds = -1L,
+            input = SessionDraftInput(title = "Invalid", discipline = Discipline.CALISTHENICS),
+        )
+    }
+
+    @Test(expected = NoSuchElementException::class)
+    fun updateCompletedSession_missingSession_throwsNoSuchElementException() = runTest {
+        repository.updateCompletedSession(
+            id = "missing-session",
+            startedAt = Instant.parse("2026-11-01T10:00:00Z"),
+            durationSeconds = 600L,
+            input = SessionDraftInput(title = "Missing", discipline = Discipline.CALISTHENICS),
+        )
+    }
 }

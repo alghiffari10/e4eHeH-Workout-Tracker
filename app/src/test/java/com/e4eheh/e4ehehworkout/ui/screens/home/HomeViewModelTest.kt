@@ -80,6 +80,14 @@ class HomeViewModelTest {
             assertNull(viewModel.uiState.value.activeSessionBanner)
             assertNull(viewModel.uiState.value.pendingDiscardSession)
 
+            val history = viewModel.uiState.value.completedSessions
+            assertEquals(1, history.size)
+            assertEquals(completed.id, history.single().sessionId)
+            assertEquals("Morning Push", history.single().displayTitle)
+            assertEquals(Discipline.CALISTHENICS, history.single().discipline)
+            assertEquals("2026-11-23 08:00", history.single().dateTimeLabel)
+            assertEquals(0, history.single().exerciseCount)
+
             collector.cancel()
         }
 

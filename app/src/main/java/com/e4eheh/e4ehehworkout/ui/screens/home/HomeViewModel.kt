@@ -10,6 +10,7 @@ import com.e4eheh.e4ehehworkout.domain.repository.ExerciseRepository
 import com.e4eheh.e4ehehworkout.domain.repository.SessionRepository
 import java.time.Clock
 import java.time.Duration
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +30,16 @@ data class ActiveSessionBannerUi(
     val elapsedSeconds: Long,
 )
 
+/** Home history summary for a completed Session that can be opened in Session Detail. */
+data class CompletedSessionHistoryItem(
+    val sessionId: String,
+    val displayTitle: String,
+    val discipline: Discipline,
+    val dateTimeLabel: String,
+    val durationSeconds: Long,
+    val exerciseCount: Int,
+)
+
 /** Combined UI state for the Batcomputer Home screen. */
 data class HomeUiState(
     val exerciseCount: Int = 0,
@@ -36,6 +47,7 @@ data class HomeUiState(
     val pendingDiscardSession: ActiveSessionBannerUi? = null,
     val isDiscarding: Boolean = false,
     val discardError: String? = null,
+    val completedSessions: List<CompletedSessionHistoryItem> = emptyList(),
 )
 
 /** User and clock-tick actions dispatched from the Home screen. */
@@ -78,6 +90,9 @@ class HomeViewModel(
             pendingDiscardSession = pendingDiscard,
             isDiscarding = state.isDiscarding,
             discardError = if (activeBanner != null) state.discardError else null,
+            completedSessions = sessions
+                .filter { it.status == SessionStatus.COMPLETED }
+                .map { it.toHistoryItem(clock) },
         )
     }.stateIn(
         scope = viewModelScope,
@@ -134,13 +149,27 @@ class HomeViewModel(
         }
     }
 
+    private fun Session.toHistoryItem(sessionClock: Clock): CompletedSessionHistoryItem =
+        CompletedSessionHistoryItem(
+            sessionId = id,
+            displayTitle = resolvedDisplayTitle(),
+            discipline = discipline,
+            dateTimeLabel = HISTORY_DATE_TIME_FORMATTER.format(startedAt.atZone(sessionClock.zone)),
+            durationSeconds = durationSeconds,
+            exerciseCount = exercises.size,
+        )
+
+    private companion object {
+        val HISTORY_DATE_TIME_FORMATTER: DateTimeFormatter =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+    }
+
     private fun Session.toBannerUi(now: java.time.Instant): ActiveSessionBannerUi {
-        val resolvedTitle = title.trim().ifEmpty { "${discipline.displayName} Session" }
         val allSets = exercises.flatMap { it.sets }
         val elapsed = Duration.between(startedAt, now).seconds.coerceAtLeast(0L)
         return ActiveSessionBannerUi(
             sessionId = id,
-            displayTitle = resolvedTitle,
+            displayTitle = resolvedDisplayTitle(),
             discipline = discipline,
             exerciseCount = exercises.size,
             completedSetCount = allSets.count { it.isCompleted },
@@ -148,6 +177,9 @@ class HomeViewModel(
             elapsedSeconds = elapsed,
         )
     }
+
+    private fun Session.resolvedDisplayTitle(): String =
+        title.trim().ifEmpty { "${discipline.displayName} Session" }
 
     class Factory(
         private val exerciseRepository: ExerciseRepository,

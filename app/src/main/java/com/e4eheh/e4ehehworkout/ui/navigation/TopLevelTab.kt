@@ -19,3 +19,13 @@ object ActiveSessionRoute {
 
     fun createRoute(sessionId: String): String = "active_session/$sessionId"
 }
+
+/** Navigation route for backdated Session logging and completed Session detail/editing. */
+object SessionEditorRoute {
+    const val ARG_SESSION_ID = "sessionId"
+    const val PATTERN = "session_editor?$ARG_SESSION_ID={$ARG_SESSION_ID}"
+
+    fun createBackdatedRoute(): String = "session_editor"
+
+    fun createDetailRoute(sessionId: String): String = "session_editor?$ARG_SESSION_ID=$sessionId"
+}

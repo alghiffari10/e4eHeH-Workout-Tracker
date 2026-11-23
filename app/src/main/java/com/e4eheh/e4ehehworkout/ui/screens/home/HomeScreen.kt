@@ -1,5 +1,6 @@
 package com.e4eheh.e4ehehworkout.ui.screens.home
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -16,9 +17,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamDeleteConfirmationDialog
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamHudBadge
@@ -40,6 +43,7 @@ fun HomeScreen(
     onAction: (HomeAction) -> Unit,
     onResumeSession: (String) -> Unit,
     onNavigateToWorkout: () -> Unit,
+    onOpenCompletedSession: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LaunchedEffect(uiState.activeSessionBanner?.sessionId) {
@@ -98,32 +102,109 @@ fun HomeScreen(
             )
         }
 
-        ArkhamHudPanel(
+        if (uiState.completedSessions.isEmpty()) {
+            ArkhamHudPanel(
+                modifier = Modifier.fillMaxWidth(),
+                highlighted = uiState.activeSessionBanner == null,
+            ) {
+                Text(
+                    text = "NO SESSIONS LOGGED YET",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = ArkhamColors.MintWhite,
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Blank-slate telemetry initialized. Build your Exercise catalog on the Workout tab or tap + for quick actions.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ArkhamColors.MintMuted,
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    text = String.format(Locale.US, "%02d EXERCISES", uiState.exerciseCount),
+                    style = ArkhamTelemetryLargeStyle,
+                    color = ArkhamColors.PhosphorGreen,
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                ArkhamPrimaryButton(
+                    text = "OPEN EXERCISE LIBRARY",
+                    onClick = onNavigateToWorkout,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        } else {
+            ArkhamSectionHeader(
+                title = "COMPLETED SESSIONS",
+                telemetryLabel = String.format(
+                    Locale.US,
+                    "%02d LOGGED",
+                    uiState.completedSessions.size,
+                ),
+            )
+            uiState.completedSessions.forEach { item ->
+                key(item.sessionId) {
+                    CompletedSessionHistoryCard(
+                        item = item,
+                        onClick = { onOpenCompletedSession(item.sessionId) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CompletedSessionHistoryCard(
+    item: CompletedSessionHistoryItem,
+    onClick: () -> Unit,
+) {
+    ArkhamHudPanel(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("home_completed_session_${item.sessionId}")
+            .clickable(role = Role.Button, onClick = onClick),
+    ) {
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            highlighted = uiState.activeSessionBanner == null,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "NO SESSIONS LOGGED YET",
+                text = item.displayTitle,
                 style = MaterialTheme.typography.titleMedium,
                 color = ArkhamColors.MintWhite,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp),
             )
-            Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "Blank-slate telemetry initialized. Build your Exercise catalog on the Workout tab or tap + for quick actions.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = ArkhamColors.MintMuted,
-            )
-            Spacer(modifier = Modifier.height(14.dp))
-            Text(
-                text = String.format(Locale.US, "%02d EXERCISES", uiState.exerciseCount),
+                text = formatElapsedDuration(item.durationSeconds),
                 style = ArkhamTelemetryLargeStyle,
                 color = ArkhamColors.PhosphorGreen,
             )
-            Spacer(modifier = Modifier.height(14.dp))
-            ArkhamPrimaryButton(
-                text = "OPEN EXERCISE LIBRARY",
-                onClick = onNavigateToWorkout,
-                modifier = Modifier.fillMaxWidth(),
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = item.dateTimeLabel,
+            style = ArkhamTelemetryStyle,
+            color = ArkhamColors.MintMuted,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ArkhamHudBadge(
+                label = item.discipline.displayName,
+                accentColor = ArkhamColors.PhosphorGreen,
+            )
+            ArkhamHudBadge(
+                label = String.format(Locale.US, "%02d EX", item.exerciseCount),
+                accentColor = ArkhamColors.PhosphorGreenDim,
+            )
+            ArkhamHudBadge(
+                label = "TAP TO INSPECT",
+                accentColor = ArkhamColors.PhosphorGreenDim,
             )
         }
     }
