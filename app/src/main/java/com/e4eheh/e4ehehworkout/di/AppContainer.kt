@@ -4,8 +4,10 @@ import android.content.Context
 import androidx.room.Room
 import com.e4eheh.e4ehehworkout.data.local.WorkoutDatabase
 import com.e4eheh.e4ehehworkout.data.repository.DefaultExerciseRepository
+import com.e4eheh.e4ehehworkout.data.repository.DefaultRoutineRepository
 import com.e4eheh.e4ehehworkout.data.repository.DefaultUserPreferencesRepository
 import com.e4eheh.e4ehehworkout.domain.repository.ExerciseRepository
+import com.e4eheh.e4ehehworkout.domain.repository.RoutineRepository
 import com.e4eheh.e4ehehworkout.domain.repository.UserPreferencesRepository
 import java.time.Clock
 
@@ -14,6 +16,7 @@ class AppContainer private constructor(
     val clock: Clock,
     private val database: WorkoutDatabase,
     val exerciseRepository: ExerciseRepository,
+    val routineRepository: RoutineRepository,
     val userPreferencesRepository: UserPreferencesRepository,
 ) {
     fun close() {
@@ -30,7 +33,10 @@ class AppContainer private constructor(
                 WorkoutDatabase::class.java,
                 WorkoutDatabase.DATABASE_NAME,
             )
-                .addMigrations(WorkoutDatabase.MIGRATION_1_2)
+                .addMigrations(
+                    WorkoutDatabase.MIGRATION_1_2,
+                    WorkoutDatabase.MIGRATION_2_3,
+                )
                 .build()
             return buildContainer(database, clock)
         }
@@ -56,6 +62,10 @@ class AppContainer private constructor(
             database = database,
             exerciseRepository = DefaultExerciseRepository(
                 exerciseDao = database.exerciseDao(),
+                clock = clock,
+            ),
+            routineRepository = DefaultRoutineRepository(
+                routineDao = database.routineDao(),
                 clock = clock,
             ),
             userPreferencesRepository = DefaultUserPreferencesRepository(

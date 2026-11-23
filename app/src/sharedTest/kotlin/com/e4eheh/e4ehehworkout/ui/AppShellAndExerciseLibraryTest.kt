@@ -70,6 +70,8 @@ class AppShellAndExerciseLibraryTest {
         composeTestRule.onNodeWithTag("nav_tab_profile").assertIsDisplayed()
 
         composeTestRule.onNodeWithText("Workout").performClick()
+        composeTestRule.onNodeWithText("// ROUTINES").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("workout_segment_exercises").performClick()
         composeTestRule.onNodeWithText("// EXERCISE LIBRARY").assertIsDisplayed()
 
         composeTestRule.onNodeWithText("Progress").performClick()
@@ -93,6 +95,7 @@ class AppShellAndExerciseLibraryTest {
     @Test
     fun workoutTab_createsAndDisplaysExercisesWithDisciplineTrackingModeAndNotes() {
         composeTestRule.onNodeWithText("Workout").performClick()
+        composeTestRule.onNodeWithTag("workout_segment_exercises").performClick()
         composeTestRule.onNodeWithText("NO EXERCISES CATALOGED").assertIsDisplayed()
 
         composeTestRule.onNodeWithText("ADD FIRST EXERCISE").performClick()
@@ -147,6 +150,7 @@ class AppShellAndExerciseLibraryTest {
         }
 
         composeTestRule.onNodeWithText("Workout").performClick()
+        composeTestRule.onNodeWithTag("workout_segment_exercises").performClick()
         composeTestRule.waitUntil(timeoutMillis = 5_000) {
             composeTestRule.onAllNodesWithText("Archer Push-up").fetchSemanticsNodes().isNotEmpty()
         }
@@ -191,6 +195,7 @@ class AppShellAndExerciseLibraryTest {
         }
 
         composeTestRule.onNodeWithText("Workout").performClick()
+        composeTestRule.onNodeWithTag("workout_segment_exercises").performClick()
         composeTestRule.waitUntil(timeoutMillis = 5_000) {
             composeTestRule.onAllNodesWithText("Dead Hang").fetchSemanticsNodes().isNotEmpty()
         }

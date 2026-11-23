@@ -43,8 +43,8 @@ import com.e4eheh.e4ehehworkout.ui.screens.home.HomeScreen
 import com.e4eheh.e4ehehworkout.ui.screens.profile.ProfileScreen
 import com.e4eheh.e4ehehworkout.ui.screens.profile.ProfileViewModel
 import com.e4eheh.e4ehehworkout.ui.screens.progress.ProgressScreen
-import com.e4eheh.e4ehehworkout.ui.screens.workout.ExerciseLibraryViewModel
 import com.e4eheh.e4ehehworkout.ui.screens.workout.WorkoutScreen
+import com.e4eheh.e4ehehworkout.ui.screens.workout.WorkoutViewModel
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamMotion
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryLargeStyle
@@ -103,8 +103,11 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
                         )
                     }
                     composable(TopLevelTab.WORKOUT.route) {
-                        val viewModel: ExerciseLibraryViewModel = viewModel(
-                            factory = ExerciseLibraryViewModel.Factory(appContainer.exerciseRepository),
+                        val viewModel: WorkoutViewModel = viewModel(
+                            factory = WorkoutViewModel.Factory(
+                                exerciseRepository = appContainer.exerciseRepository,
+                                routineRepository = appContainer.routineRepository,
+                            ),
                         )
                         val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                         WorkoutScreen(

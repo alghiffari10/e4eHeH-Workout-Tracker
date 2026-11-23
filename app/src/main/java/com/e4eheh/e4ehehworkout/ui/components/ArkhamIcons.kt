@@ -170,6 +170,73 @@ object ArkhamIcons {
         }
     }
 
+    val ArrowUp: ImageVector by lazy {
+        tacticalIcon("ArkhamArrowUp") {
+            path(
+                stroke = SolidColor(Color.White),
+                strokeLineWidth = 1.8f,
+                strokeLineCap = StrokeCap.Square,
+                strokeLineJoin = StrokeJoin.Miter,
+            ) {
+                moveTo(12f, 19f)
+                lineTo(12f, 5f)
+                moveTo(6.5f, 10.5f)
+                lineTo(12f, 5f)
+                lineTo(17.5f, 10.5f)
+            }
+        }
+    }
+
+    val ArrowDown: ImageVector by lazy {
+        tacticalIcon("ArkhamArrowDown") {
+            path(
+                stroke = SolidColor(Color.White),
+                strokeLineWidth = 1.8f,
+                strokeLineCap = StrokeCap.Square,
+                strokeLineJoin = StrokeJoin.Miter,
+            ) {
+                moveTo(12f, 5f)
+                lineTo(12f, 19f)
+                moveTo(6.5f, 13.5f)
+                lineTo(12f, 19f)
+                lineTo(17.5f, 13.5f)
+            }
+        }
+    }
+
+    val Back: ImageVector by lazy {
+        tacticalIcon("ArkhamBack") {
+            path(
+                stroke = SolidColor(Color.White),
+                strokeLineWidth = 1.8f,
+                strokeLineCap = StrokeCap.Square,
+                strokeLineJoin = StrokeJoin.Miter,
+            ) {
+                moveTo(19f, 12f)
+                lineTo(5f, 12f)
+                moveTo(10.5f, 6.5f)
+                lineTo(5f, 12f)
+                lineTo(10.5f, 17.5f)
+            }
+        }
+    }
+
+    val Close: ImageVector by lazy {
+        tacticalIcon("ArkhamClose") {
+            path(
+                stroke = SolidColor(Color.White),
+                strokeLineWidth = 1.8f,
+                strokeLineCap = StrokeCap.Square,
+                strokeLineJoin = StrokeJoin.Miter,
+            ) {
+                moveTo(6f, 6f)
+                lineTo(18f, 18f)
+                moveTo(18f, 6f)
+                lineTo(6f, 18f)
+            }
+        }
+    }
+
     private fun tacticalIcon(
         name: String,
         block: ImageVector.Builder.() -> Unit,

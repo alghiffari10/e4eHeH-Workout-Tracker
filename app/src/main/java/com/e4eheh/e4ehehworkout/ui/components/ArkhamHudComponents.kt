@@ -37,9 +37,12 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamMotion
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamShapes
+import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryLargeStyle
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryStyle
 
 /** Full-screen obsidian HUD backdrop with subtle Batcomputer grid and scanline texture. */
@@ -226,12 +229,14 @@ fun ArkhamPrimaryButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     containerColor: Color = ArkhamColors.PhosphorGreen,
     contentColor: Color = ArkhamColors.OnPhosphor,
 ) {
     Button(
         onClick = onClick,
         modifier = modifier,
+        enabled = enabled,
         shape = ArkhamShapes.chip,
         colors = ButtonDefaults.buttonColors(
             containerColor = containerColor,
@@ -251,6 +256,7 @@ fun ArkhamSecondaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
 ) {
     val borderColor = if (enabled) {
         ArkhamColors.TerminalEmeraldBright
@@ -262,6 +268,7 @@ fun ArkhamSecondaryButton(
         modifier = modifier,
         enabled = enabled,
         shape = ArkhamShapes.chip,
+        contentPadding = contentPadding,
         border = BorderStroke(1.dp, borderColor),
         colors = ButtonDefaults.outlinedButtonColors(
             contentColor = ArkhamColors.MintWhite,
@@ -323,6 +330,63 @@ fun <T> ArkhamChipSelectorSection(
                     onClick = { onSelect(option) },
                     modifier = chipModifier,
                 )
+            }
+        }
+    }
+}
+
+/** Shared destructive confirmation modal used across Exercise and Routine soft-deletes. */
+@Composable
+fun ArkhamDeleteConfirmationDialog(
+    title: String,
+    itemName: String,
+    message: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        ArkhamHudPanel(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            highlighted = true,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = title,
+                    style = ArkhamTelemetryLargeStyle,
+                    color = ArkhamColors.AlertRed,
+                )
+                Text(
+                    text = itemName,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = ArkhamColors.MintWhite,
+                )
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ArkhamColors.MintMuted,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    ArkhamSecondaryButton(
+                        text = "Cancel",
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ArkhamPrimaryButton(
+                        text = "Delete",
+                        onClick = onConfirm,
+                        containerColor = ArkhamColors.AlertRed,
+                        contentColor = ArkhamColors.OnAlertRed,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
     }

@@ -20,6 +20,7 @@ import com.e4eheh.e4ehehworkout.domain.model.Discipline
 import com.e4eheh.e4ehehworkout.domain.model.Exercise
 import com.e4eheh.e4ehehworkout.domain.model.TrackingMode
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamChipSelectorSection
+import com.e4eheh.e4ehehworkout.ui.components.ArkhamDeleteConfirmationDialog
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamHudPanel
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamPrimaryButton
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSecondaryButton
@@ -27,6 +28,92 @@ import com.e4eheh.e4ehehworkout.ui.components.arkhamTextFieldColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamShapes
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryLargeStyle
+
+/** Form state for creating or editing an Exercise on the Workout tab. */
+data class ExerciseEditorState(
+    val editingExerciseId: String? = null,
+    val name: String = "",
+    val discipline: Discipline = Discipline.CALISTHENICS,
+    val trackingMode: TrackingMode = TrackingMode.REPS_AND_LOAD,
+    val defaultNotes: String = "",
+    val nameError: String? = null,
+)
+
+/** Reusable Exercise input fields shared between the library modal and inline Routine picker creator. */
+@Composable
+fun ExerciseFormFields(
+    name: String,
+    nameError: String?,
+    discipline: Discipline,
+    trackingMode: TrackingMode,
+    defaultNotes: String,
+    showNotesField: Boolean,
+    onNameChange: (String) -> Unit,
+    onDisciplineChange: (Discipline) -> Unit,
+    onTrackingModeChange: (TrackingMode) -> Unit,
+    onNotesChange: (String) -> Unit,
+    nameTestTag: String,
+    notesTestTag: String? = null,
+    disciplineTestTagOf: ((Discipline) -> String)? = null,
+    trackingModeTestTagOf: ((TrackingMode) -> String)? = null,
+) {
+    val fieldColors = arkhamTextFieldColors()
+
+    OutlinedTextField(
+        value = name,
+        onValueChange = onNameChange,
+        label = { Text("Exercise Name") },
+        singleLine = true,
+        isError = nameError != null,
+        supportingText = nameError?.let { error ->
+            {
+                Text(
+                    text = error,
+                    color = ArkhamColors.AlertRed,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        },
+        shape = ArkhamShapes.chip,
+        colors = fieldColors,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(nameTestTag),
+    )
+
+    ArkhamChipSelectorSection(
+        title = "DISCIPLINE",
+        options = Discipline.entries,
+        selected = discipline,
+        labelOf = { it.displayName },
+        onSelect = onDisciplineChange,
+        testTagOf = disciplineTestTagOf,
+    )
+
+    ArkhamChipSelectorSection(
+        title = "TRACKING MODE",
+        options = TrackingMode.entries,
+        selected = trackingMode,
+        labelOf = { it.displayName },
+        onSelect = onTrackingModeChange,
+        testTagOf = trackingModeTestTagOf,
+    )
+
+    if (showNotesField) {
+        OutlinedTextField(
+            value = defaultNotes,
+            onValueChange = onNotesChange,
+            label = { Text("Default Notes (Optional)") },
+            minLines = 2,
+            maxLines = 4,
+            shape = ArkhamShapes.chip,
+            colors = fieldColors,
+            modifier = Modifier
+                .fillMaxWidth()
+                .let { base -> if (notesTestTag != null) base.testTag(notesTestTag) else base },
+        )
+    }
+}
 
 /** Modal chamfered HUD dialog for creating or editing an Exercise. */
 @Composable
@@ -39,8 +126,6 @@ fun ExerciseEditorDialog(
     onDismiss: () -> Unit,
     onSave: () -> Unit,
 ) {
-    val fieldColors = arkhamTextFieldColors()
-
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -63,55 +148,19 @@ fun ExerciseEditorDialog(
                     color = ArkhamColors.PhosphorGreen,
                 )
 
-                OutlinedTextField(
-                    value = state.name,
-                    onValueChange = onNameChange,
-                    label = { Text("Exercise Name") },
-                    singleLine = true,
-                    isError = state.nameError != null,
-                    supportingText = state.nameError?.let { error ->
-                        {
-                            Text(
-                                text = error,
-                                color = ArkhamColors.AlertRed,
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                        }
-                    },
-                    shape = ArkhamShapes.chip,
-                    colors = fieldColors,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("exercise_name_input"),
-                )
-
-                ArkhamChipSelectorSection(
-                    title = "DISCIPLINE",
-                    options = Discipline.entries,
-                    selected = state.discipline,
-                    labelOf = { it.displayName },
-                    onSelect = onDisciplineChange,
-                )
-
-                ArkhamChipSelectorSection(
-                    title = "TRACKING MODE",
-                    options = TrackingMode.entries,
-                    selected = state.trackingMode,
-                    labelOf = { it.displayName },
-                    onSelect = onTrackingModeChange,
-                )
-
-                OutlinedTextField(
-                    value = state.defaultNotes,
-                    onValueChange = onNotesChange,
-                    label = { Text("Default Notes (Optional)") },
-                    minLines = 2,
-                    maxLines = 4,
-                    shape = ArkhamShapes.chip,
-                    colors = fieldColors,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("exercise_notes_input"),
+                ExerciseFormFields(
+                    name = state.name,
+                    nameError = state.nameError,
+                    discipline = state.discipline,
+                    trackingMode = state.trackingMode,
+                    defaultNotes = state.defaultNotes,
+                    showNotesField = true,
+                    onNameChange = onNameChange,
+                    onDisciplineChange = onDisciplineChange,
+                    onTrackingModeChange = onTrackingModeChange,
+                    onNotesChange = onNotesChange,
+                    nameTestTag = "exercise_name_input",
+                    notesTestTag = "exercise_notes_input",
                 )
 
                 Row(
@@ -141,50 +190,11 @@ fun DeleteExerciseDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        ArkhamHudPanel(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp),
-            highlighted = true,
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = "DELETE EXERCISE?",
-                    style = ArkhamTelemetryLargeStyle,
-                    color = ArkhamColors.AlertRed,
-                )
-                Text(
-                    text = exercise.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = ArkhamColors.MintWhite,
-                )
-                Text(
-                    text = "Removes this Exercise from your active catalog while preserving sync-ready soft-delete history.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = ArkhamColors.MintMuted,
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    ArkhamSecondaryButton(
-                        text = "Cancel",
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f),
-                    )
-                    ArkhamPrimaryButton(
-                        text = "Delete",
-                        onClick = onConfirm,
-                        containerColor = ArkhamColors.AlertRed,
-                        contentColor = ArkhamColors.OnAlertRed,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-        }
-    }
+    ArkhamDeleteConfirmationDialog(
+        title = "DELETE EXERCISE?",
+        itemName = exercise.name,
+        message = "Removes this Exercise from your active catalog while preserving sync-ready soft-delete history.",
+        onDismiss = onDismiss,
+        onConfirm = onConfirm,
+    )
 }
