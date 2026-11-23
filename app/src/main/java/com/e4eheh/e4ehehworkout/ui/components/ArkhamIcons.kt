@@ -237,6 +237,21 @@ object ArkhamIcons {
         }
     }
 
+    val Check: ImageVector by lazy {
+        tacticalIcon("ArkhamCheck") {
+            path(
+                stroke = SolidColor(Color.White),
+                strokeLineWidth = 2.2f,
+                strokeLineCap = StrokeCap.Square,
+                strokeLineJoin = StrokeJoin.Miter,
+            ) {
+                moveTo(5f, 12.5f)
+                lineTo(10f, 17.5f)
+                lineTo(19f, 6.5f)
+            }
+        }
+    }
+
     private fun tacticalIcon(
         name: String,
         block: ImageVector.Builder.() -> Unit,

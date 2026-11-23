@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
@@ -33,17 +31,17 @@ import com.e4eheh.e4ehehworkout.domain.model.Routine
 import com.e4eheh.e4ehehworkout.domain.model.RoutineExercise
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamChipSelectorSection
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamDeleteConfirmationDialog
+import com.e4eheh.e4ehehworkout.ui.components.ArkhamExercisePickerView
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamHudBadge
-import com.e4eheh.e4ehehworkout.ui.components.ArkhamHudChip
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamHudPanel
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamIcons
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamPrimaryButton
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSecondaryButton
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSectionHeader
+import com.e4eheh.e4ehehworkout.ui.components.ArkhamTopHeader
 import com.e4eheh.e4ehehworkout.ui.components.arkhamTextFieldColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamShapes
-import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryLargeStyle
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryStyle
 import java.util.Locale
 
@@ -57,10 +55,23 @@ fun RoutineBuilderView(
     modifier: Modifier = Modifier,
 ) {
     if (state.showExercisePicker) {
-        RoutineExercisePickerView(
-            state = state,
+        val existingExerciseIds = state.exercises.mapTo(HashSet()) { it.exerciseId }
+        ArkhamExercisePickerView(
             exercises = exercises,
-            onAction = onAction,
+            alreadyAddedExerciseIds = existingExerciseIds,
+            alreadyAddedBadgeLabel = "IN ROUTINE",
+            emptyLibraryMessage = "Create your first Exercise inline above to add it directly to this Routine.",
+            disciplineFilter = state.pickerDisciplineFilter,
+            inlineExercise = state.inlineExercise,
+            onClosePicker = { onAction(WorkoutAction.CloseExercisePicker) },
+            onSelectDisciplineFilter = { onAction(WorkoutAction.SelectPickerDisciplineFilter(it)) },
+            onAddExercise = { onAction(WorkoutAction.AddExistingExerciseToRoutine(it)) },
+            onOpenInlineCreator = { onAction(WorkoutAction.OpenInlineExerciseCreator) },
+            onCloseInlineCreator = { onAction(WorkoutAction.CloseInlineExerciseCreator) },
+            onInlineNameChange = { onAction(WorkoutAction.UpdateInlineExerciseName(it)) },
+            onInlineDisciplineChange = { onAction(WorkoutAction.UpdateInlineExerciseDiscipline(it)) },
+            onInlineTrackingModeChange = { onAction(WorkoutAction.UpdateInlineExerciseTrackingMode(it)) },
+            onSaveInlineExercise = { onAction(WorkoutAction.SaveInlineExercise) },
             modifier = modifier,
         )
         return
@@ -77,7 +88,7 @@ fun RoutineBuilderView(
             .padding(horizontal = 16.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        RoutineTopHeader(
+        ArkhamTopHeader(
             title = if (state.editingRoutineId == null) "CREATE ROUTINE" else "EDIT ROUTINE",
             backTestTag = "routine_builder_back_button",
             onBack = { onAction(WorkoutAction.DismissRoutineBuilder) },
@@ -182,41 +193,6 @@ fun RoutineBuilderView(
                     .testTag("routine_save_button"),
             )
         }
-    }
-}
-
-@Composable
-private fun RoutineTopHeader(
-    title: String,
-    backTestTag: String,
-    onBack: () -> Unit,
-    backEnabled: Boolean = true,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        IconButton(
-            onClick = onBack,
-            enabled = backEnabled,
-            modifier = Modifier.testTag(backTestTag),
-        ) {
-            Icon(
-                imageVector = ArkhamIcons.Back,
-                contentDescription = "Back",
-                tint = if (backEnabled) {
-                    ArkhamColors.PhosphorGreen
-                } else {
-                    ArkhamColors.MintMuted.copy(alpha = 0.35f)
-                },
-            )
-        }
-        Text(
-            text = title,
-            style = ArkhamTelemetryLargeStyle,
-            color = ArkhamColors.PhosphorGreen,
-        )
     }
 }
 
@@ -351,254 +327,6 @@ private fun RoutineBuilderExerciseRow(
                 onClick = onIncrementSets,
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                 modifier = Modifier.testTag("routine_item_sets_inc_$index"),
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun RoutineExercisePickerView(
-    state: RoutineBuilderState,
-    exercises: List<Exercise>,
-    onAction: (WorkoutAction) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val inline = state.inlineExercise
-    val canNavigateBack = inline?.isSaving != true
-    val handleBack = {
-        if (inline != null) {
-            onAction(WorkoutAction.CloseInlineExerciseCreator)
-        } else {
-            onAction(WorkoutAction.CloseExercisePicker)
-        }
-    }
-
-    BackHandler(enabled = canNavigateBack, onBack = handleBack)
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        RoutineTopHeader(
-            title = "ADD EXERCISE",
-            backTestTag = "picker_back_button",
-            onBack = handleBack,
-            backEnabled = canNavigateBack,
-        )
-
-        if (inline != null) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-            ) {
-                ArkhamHudPanel(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("inline_exercise_panel"),
-                    highlighted = true,
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(
-                            text = "NEW EXERCISE (INLINE)",
-                            style = ArkhamTelemetryStyle,
-                            color = ArkhamColors.PhosphorGreen,
-                        )
-                        ExerciseCoreFormFields(
-                            name = inline.name,
-                            nameError = inline.nameError,
-                            discipline = inline.discipline,
-                            trackingMode = inline.trackingMode,
-                            onNameChange = { onAction(WorkoutAction.UpdateInlineExerciseName(it)) },
-                            onDisciplineChange = {
-                                onAction(WorkoutAction.UpdateInlineExerciseDiscipline(it))
-                            },
-                            onTrackingModeChange = {
-                                onAction(WorkoutAction.UpdateInlineExerciseTrackingMode(it))
-                            },
-                            nameTestTag = "inline_exercise_name_input",
-                            disciplineTestTagOf = { "inline_exercise_discipline_${it.name}" },
-                            trackingModeTestTagOf = { "inline_exercise_tracking_mode_${it.name}" },
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            ArkhamSecondaryButton(
-                                text = "Cancel",
-                                enabled = !inline.isSaving,
-                                onClick = { onAction(WorkoutAction.CloseInlineExerciseCreator) },
-                                modifier = Modifier.weight(1f),
-                            )
-                            ArkhamPrimaryButton(
-                                text = "Create & Add",
-                                enabled = !inline.isSaving,
-                                onClick = { onAction(WorkoutAction.SaveInlineExercise) },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("inline_exercise_save_button"),
-                            )
-                        }
-                    }
-                }
-            }
-        } else {
-            ArkhamPrimaryButton(
-                text = "+ CREATE NEW EXERCISE INLINE",
-                onClick = { onAction(WorkoutAction.OpenInlineExerciseCreator) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("picker_inline_create_button"),
-            )
-
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                ArkhamHudChip(
-                    label = "All",
-                    selected = state.pickerDisciplineFilter == null,
-                    onClick = { onAction(WorkoutAction.SelectPickerDisciplineFilter(null)) },
-                    modifier = Modifier.testTag("picker_filter_all"),
-                )
-                Discipline.entries.forEach { discipline ->
-                    ArkhamHudChip(
-                        label = discipline.displayName,
-                        selected = state.pickerDisciplineFilter == discipline,
-                        onClick = {
-                            onAction(WorkoutAction.SelectPickerDisciplineFilter(discipline))
-                        },
-                        modifier = Modifier.testTag("picker_filter_${discipline.name}"),
-                    )
-                }
-            }
-
-            val filteredExercises = if (state.pickerDisciplineFilter == null) {
-                exercises
-            } else {
-                exercises.filter { it.discipline == state.pickerDisciplineFilter }
-            }
-            val existingExerciseIds = state.exercises.mapTo(HashSet()) { it.exerciseId }
-
-            LazyColumn(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .testTag("picker_exercise_list"),
-                contentPadding = PaddingValues(bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                when {
-                    exercises.isEmpty() -> {
-                        item(key = "empty_library") {
-                            ArkhamHudPanel(
-                                modifier = Modifier.fillMaxWidth(),
-                                highlighted = true,
-                            ) {
-                                Text(
-                                    text = "EXERCISE LIBRARY EMPTY",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = ArkhamColors.MintWhite,
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "Create your first Exercise inline above to add it directly to this Routine.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = ArkhamColors.MintMuted,
-                                )
-                            }
-                        }
-                    }
-
-                    filteredExercises.isEmpty() -> {
-                        item(key = "empty_filter") {
-                            ArkhamHudPanel(modifier = Modifier.fillMaxWidth()) {
-                                Text(
-                                    text = "NO EXERCISES IN THIS DISCIPLINE",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = ArkhamColors.MintWhite,
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "Select another Discipline filter or create a new Exercise inline.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = ArkhamColors.MintMuted,
-                                )
-                            }
-                        }
-                    }
-
-                    else -> {
-                        items(
-                            items = filteredExercises,
-                            key = { it.id },
-                        ) { exercise ->
-                            PickerExerciseRow(
-                                exercise = exercise,
-                                alreadyInRoutine = exercise.id in existingExerciseIds,
-                                onAdd = {
-                                    onAction(WorkoutAction.AddExistingExerciseToRoutine(exercise.id))
-                                },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun PickerExerciseRow(
-    exercise: Exercise,
-    alreadyInRoutine: Boolean,
-    onAdd: () -> Unit,
-) {
-    ArkhamHudPanel(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Text(
-                    text = exercise.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = ArkhamColors.MintWhite,
-                )
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    ArkhamHudBadge(
-                        label = exercise.discipline.displayName,
-                        accentColor = ArkhamColors.PhosphorGreen,
-                    )
-                    ArkhamHudBadge(
-                        label = exercise.trackingMode.displayName,
-                        accentColor = ArkhamColors.PhosphorGreenDim,
-                    )
-                    if (alreadyInRoutine) {
-                        ArkhamHudBadge(
-                            label = "IN ROUTINE",
-                            accentColor = ArkhamColors.MintWhite,
-                        )
-                    }
-                }
-            }
-            ArkhamSecondaryButton(
-                text = "ADD",
-                onClick = onAdd,
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                modifier = Modifier.testTag("picker_exercise_${exercise.id}"),
             )
         }
     }

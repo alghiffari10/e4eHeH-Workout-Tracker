@@ -1,0 +1,26 @@
+package com.e4eheh.e4ehehworkout.domain.repository
+
+import com.e4eheh.e4ehehworkout.domain.model.Discipline
+import com.e4eheh.e4ehehworkout.domain.model.Session
+import com.e4eheh.e4ehehworkout.domain.model.SessionDraftInput
+import kotlinx.coroutines.flow.Flow
+
+/** Persistence boundary for workout Sessions, auto-saved drafts, and completion snapshots. */
+interface SessionRepository {
+    fun observeActiveSessions(): Flow<List<Session>>
+
+    fun observeById(id: String): Flow<Session?>
+
+    suspend fun getById(id: String, includeDeleted: Boolean = false): Session?
+
+    suspend fun createLiveBlankSession(
+        discipline: Discipline = Discipline.CALISTHENICS,
+        title: String = "",
+    ): Session
+
+    suspend fun saveDraft(id: String, input: SessionDraftInput): Session
+
+    suspend fun completeSession(id: String, input: SessionDraftInput): Session
+
+    suspend fun softDelete(id: String): Session
+}

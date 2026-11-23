@@ -13,6 +13,7 @@ import com.e4eheh.e4ehehworkout.domain.model.RoutineInput
 import com.e4eheh.e4ehehworkout.domain.model.TrackingMode
 import com.e4eheh.e4ehehworkout.domain.repository.ExerciseRepository
 import com.e4eheh.e4ehehworkout.domain.repository.RoutineRepository
+import com.e4eheh.e4ehehworkout.ui.components.InlineExerciseDraft
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -34,15 +35,6 @@ data class RoutineExerciseDraft(
     val routineExerciseId: String?,
     val exerciseId: String,
     val defaultTargetSets: Int? = null,
-)
-
-/** Form state for creating a new Exercise inline inside the Routine Builder picker. */
-data class InlineExerciseDraft(
-    val name: String = "",
-    val discipline: Discipline,
-    val trackingMode: TrackingMode = TrackingMode.REPS_AND_LOAD,
-    val nameError: String? = null,
-    val isSaving: Boolean = false,
 )
 
 /** Draft state for creating or editing a Routine without leaving the Workout screen. */

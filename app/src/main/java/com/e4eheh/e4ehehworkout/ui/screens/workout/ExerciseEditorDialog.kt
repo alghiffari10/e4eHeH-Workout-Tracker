@@ -19,11 +19,11 @@ import androidx.compose.ui.window.DialogProperties
 import com.e4eheh.e4ehehworkout.domain.model.Discipline
 import com.e4eheh.e4ehehworkout.domain.model.Exercise
 import com.e4eheh.e4ehehworkout.domain.model.TrackingMode
-import com.e4eheh.e4ehehworkout.ui.components.ArkhamChipSelectorSection
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamDeleteConfirmationDialog
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamHudPanel
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamPrimaryButton
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSecondaryButton
+import com.e4eheh.e4ehehworkout.ui.components.ExerciseCoreFormFields
 import com.e4eheh.e4ehehworkout.ui.components.arkhamTextFieldColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamShapes
@@ -38,61 +38,6 @@ data class ExerciseEditorState(
     val defaultNotes: String = "",
     val nameError: String? = null,
 )
-
-/** Core Exercise input fields shared between the library modal and inline Routine picker creator. */
-@Composable
-fun ExerciseCoreFormFields(
-    name: String,
-    nameError: String?,
-    discipline: Discipline,
-    trackingMode: TrackingMode,
-    onNameChange: (String) -> Unit,
-    onDisciplineChange: (Discipline) -> Unit,
-    onTrackingModeChange: (TrackingMode) -> Unit,
-    nameTestTag: String,
-    disciplineTestTagOf: ((Discipline) -> String)? = null,
-    trackingModeTestTagOf: ((TrackingMode) -> String)? = null,
-) {
-    OutlinedTextField(
-        value = name,
-        onValueChange = onNameChange,
-        label = { Text("Exercise Name") },
-        singleLine = true,
-        isError = nameError != null,
-        supportingText = nameError?.let { error ->
-            {
-                Text(
-                    text = error,
-                    color = ArkhamColors.AlertRed,
-                    style = MaterialTheme.typography.labelMedium,
-                )
-            }
-        },
-        shape = ArkhamShapes.chip,
-        colors = arkhamTextFieldColors(),
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag(nameTestTag),
-    )
-
-    ArkhamChipSelectorSection(
-        title = "DISCIPLINE",
-        options = Discipline.entries,
-        selected = discipline,
-        labelOf = { it.displayName },
-        onSelect = onDisciplineChange,
-        testTagOf = disciplineTestTagOf,
-    )
-
-    ArkhamChipSelectorSection(
-        title = "TRACKING MODE",
-        options = TrackingMode.entries,
-        selected = trackingMode,
-        labelOf = { it.displayName },
-        onSelect = onTrackingModeChange,
-        testTagOf = trackingModeTestTagOf,
-    )
-}
 
 /** Modal chamfered HUD dialog for creating or editing an Exercise. */
 @Composable

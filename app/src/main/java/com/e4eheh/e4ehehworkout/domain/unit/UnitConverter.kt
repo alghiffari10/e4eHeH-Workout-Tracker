@@ -25,11 +25,17 @@ object UnitConverter {
     fun distanceToCanonicalKm(displayValue: Double, unit: DistanceUnit): Double =
         toCanonical(displayValue, unit.kmPerUnit)
 
+    fun formatWeightValue(canonicalKg: Double, unit: WeightUnit): String =
+        formatDecimal(weightToDisplay(canonicalKg, unit))
+
+    fun formatDistanceValue(canonicalKm: Double, unit: DistanceUnit): String =
+        formatDecimal(distanceToDisplay(canonicalKm, unit))
+
     fun formatWeight(canonicalKg: Double, unit: WeightUnit): String =
-        "${formatDecimal(weightToDisplay(canonicalKg, unit))} ${unit.symbol}"
+        "${formatWeightValue(canonicalKg, unit)} ${unit.symbol}"
 
     fun formatDistance(canonicalKm: Double, unit: DistanceUnit): String =
-        "${formatDecimal(distanceToDisplay(canonicalKm, unit))} ${unit.symbol}"
+        "${formatDistanceValue(canonicalKm, unit)} ${unit.symbol}"
 
     private fun toDisplay(canonicalValue: Double, canonicalPerUnit: Double): Double =
         convert(canonicalValue) { value ->

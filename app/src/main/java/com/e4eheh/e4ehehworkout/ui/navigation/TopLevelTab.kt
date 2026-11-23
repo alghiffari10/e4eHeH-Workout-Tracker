@@ -11,3 +11,11 @@ enum class TopLevelTab(
     PROGRESS("progress", "Progress", "nav_tab_progress"),
     PROFILE("profile", "Profile", "nav_tab_profile"),
 }
+
+/** Navigation route for the full-screen active live Session logger. */
+object ActiveSessionRoute {
+    const val ARG_SESSION_ID = "sessionId"
+    const val PATTERN = "active_session/{$ARG_SESSION_ID}"
+
+    fun createRoute(sessionId: String): String = "active_session/$sessionId"
+}

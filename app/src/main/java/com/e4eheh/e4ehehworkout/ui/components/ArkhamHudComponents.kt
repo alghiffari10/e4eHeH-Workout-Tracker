@@ -14,12 +14,15 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -44,6 +47,7 @@ import com.e4eheh.e4ehehworkout.ui.theme.ArkhamMotion
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamShapes
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryLargeStyle
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryStyle
+import java.util.Locale
 
 /** Full-screen obsidian HUD backdrop with subtle Batcomputer grid and scanline texture. */
 @Composable
@@ -404,5 +408,60 @@ fun ArkhamDeleteConfirmationDialog(
                 }
             }
         }
+    }
+}
+
+/** Shared HUD top header row with back button, title, and optional trailing telemetry. */
+@Composable
+fun ArkhamTopHeader(
+    title: String,
+    backTestTag: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    backEnabled: Boolean = true,
+    trailingContent: (@Composable RowScope.() -> Unit)? = null,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        IconButton(
+            onClick = onBack,
+            enabled = backEnabled,
+            modifier = Modifier.testTag(backTestTag),
+        ) {
+            Icon(
+                imageVector = ArkhamIcons.Back,
+                contentDescription = "Back",
+                tint = if (backEnabled) {
+                    ArkhamColors.PhosphorGreen
+                } else {
+                    ArkhamColors.MintMuted.copy(alpha = 0.35f)
+                },
+            )
+        }
+        Text(
+            text = title,
+            style = ArkhamTelemetryLargeStyle,
+            color = ArkhamColors.PhosphorGreen,
+            modifier = Modifier.weight(1f),
+        )
+        if (trailingContent != null) {
+            trailingContent()
+        }
+    }
+}
+
+/** Formats a non-negative elapsed duration in seconds as MM:SS or HH:MM:SS. */
+fun formatElapsedDuration(totalSeconds: Long): String {
+    val safeSeconds = totalSeconds.coerceAtLeast(0L)
+    val hours = safeSeconds / 3_600L
+    val minutes = (safeSeconds % 3_600L) / 60L
+    val seconds = safeSeconds % 60L
+    return if (hours > 0L) {
+        String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.US, "%02d:%02d", minutes, seconds)
     }
 }

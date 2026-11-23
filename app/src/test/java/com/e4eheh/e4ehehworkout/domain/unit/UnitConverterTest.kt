@@ -111,5 +111,10 @@ class UnitConverterTest {
         assertEquals("3.11 mi", UnitConverter.formatDistance(5.0, DistanceUnit.MI))
         assertEquals("0 km", UnitConverter.formatDistance(0.0, DistanceUnit.KM))
         assertEquals("0 mi", UnitConverter.formatDistance(0.0, DistanceUnit.MI))
+
+        assertEquals("220.46", UnitConverter.formatWeightValue(100.0, WeightUnit.LB))
+        assertEquals("45", UnitConverter.formatWeightValue(UnitConverter.weightToCanonicalKg(45.0, WeightUnit.LB), WeightUnit.LB))
+        assertEquals("3.11", UnitConverter.formatDistanceValue(5.0, DistanceUnit.MI))
+        assertEquals("0", UnitConverter.formatDistanceValue(0.0, DistanceUnit.MI))
     }
 }
