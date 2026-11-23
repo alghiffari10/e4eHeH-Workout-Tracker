@@ -21,9 +21,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -60,8 +60,6 @@ import com.e4eheh.e4ehehworkout.ui.theme.ArkhamMotion
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryLargeStyle
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryStyle
 import com.e4eheh.e4ehehworkout.ui.theme.E4eHeHWorkoutTheme
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 /** Root Batcomputer HUD application shell hosting 4-tab navigation, the + quick-action sheet, and live Session logging. */
 @Composable
@@ -76,8 +74,19 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
             .observeActiveExercises()
             .collectAsStateWithLifecycle(initialValue = emptyList())
         var showQuickActionSheet by rememberSaveable { mutableStateOf(false) }
-        var isStartingSession by rememberSaveable { mutableStateOf(false) }
-        val coroutineScope = rememberCoroutineScope()
+        val appShellViewModel: AppShellViewModel = viewModel(
+            factory = AppShellViewModel.Factory(appContainer.sessionRepository),
+        )
+        val shellUiState by appShellViewModel.uiState.collectAsStateWithLifecycle()
+
+        LaunchedEffect(shellUiState.pendingSessionId) {
+            val sessionId = shellUiState.pendingSessionId ?: return@LaunchedEffect
+            showQuickActionSheet = false
+            navController.navigate(ActiveSessionRoute.createRoute(sessionId)) {
+                launchSingleTop = true
+            }
+            appShellViewModel.consumePendingSessionNavigation(sessionId)
+        }
 
         val navigateToTab: (TopLevelTab) -> Unit = { tab ->
             navController.navigate(tab.route) {
@@ -179,24 +188,8 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
 
             if (showQuickActionSheet) {
                 QuickActionSheet(
-                    isStartingSession = isStartingSession,
-                    onStartLiveBlankSession = {
-                        if (!isStartingSession) {
-                            isStartingSession = true
-                            coroutineScope.launch(Dispatchers.Main.immediate) {
-                                try {
-                                    val created = appContainer.sessionRepository
-                                        .createLiveBlankSession()
-                                    showQuickActionSheet = false
-                                    navController.navigate(ActiveSessionRoute.createRoute(created.id)) {
-                                        launchSingleTop = true
-                                    }
-                                } finally {
-                                    isStartingSession = false
-                                }
-                            }
-                        }
-                    },
+                    isStartingSession = shellUiState.isStartingSession,
+                    onStartLiveBlankSession = appShellViewModel::startLiveBlankSession,
                     onDismiss = { showQuickActionSheet = false },
                 )
             }

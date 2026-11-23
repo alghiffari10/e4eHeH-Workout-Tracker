@@ -88,31 +88,15 @@ class DefaultSessionRepository(
         }
 
         val nowEpoch = nowMillis().toEpochMilli()
-        val deletedSession = existing.session.copy(
-            updatedAt = nowEpoch,
-            deletedAt = nowEpoch,
-            syncStatus = SyncStatus.PENDING.name,
-        )
+        val deletedSession = existing.session.tombstoned(nowEpoch)
         val newlyTombstonedExercises = existing.exercises
             .map { it.sessionExercise }
             .filter { it.deletedAt == null }
-            .map { exercise ->
-                exercise.copy(
-                    updatedAt = nowEpoch,
-                    deletedAt = nowEpoch,
-                    syncStatus = SyncStatus.PENDING.name,
-                )
-            }
+            .map { it.tombstoned(nowEpoch) }
         val newlyTombstonedSets = existing.exercises
             .flatMap { it.sets }
             .filter { it.deletedAt == null }
-            .map { set ->
-                set.copy(
-                    updatedAt = nowEpoch,
-                    deletedAt = nowEpoch,
-                    syncStatus = SyncStatus.PENDING.name,
-                )
-            }
+            .map { it.tombstoned(nowEpoch) }
 
         sessionDao.upsertSessionGraph(
             session = deletedSession,
@@ -122,18 +106,16 @@ class DefaultSessionRepository(
 
         val tombstonedExById = newlyTombstonedExercises.associateBy { it.id }
         val tombstonedSetById = newlyTombstonedSets.associateBy { it.id }
-        val allExercises = existing.exercises
-            .map { entry ->
-                val resolvedExercise = tombstonedExById[entry.sessionExercise.id] ?: entry.sessionExercise
-                val resolvedSets = entry.sets
-                    .map { set -> tombstonedSetById[set.id] ?: set }
-                    .sortedWith(compareBy({ it.sortOrder }, { it.createdAt }))
-                    .map { it.toDomain() }
-                resolvedExercise.toDomain(resolvedSets)
-            }
-            .sortedWith(compareBy({ it.sortOrder }, { it.createdAt }))
-
-        deletedSession.toDomain(allExercises)
+        val updatedEntries = existing.exercises.map { entry ->
+            SessionExerciseWithSets(
+                sessionExercise = tombstonedExById[entry.sessionExercise.id] ?: entry.sessionExercise,
+                sets = entry.sets.map { set -> tombstonedSetById[set.id] ?: set },
+            )
+        }
+        SessionWithExercises(
+            session = deletedSession,
+            exercises = updatedEntries,
+        ).toDomain(includeDeletedChildren = true)
     }
 
     private suspend fun persistSessionUpdate(
@@ -242,29 +224,17 @@ class DefaultSessionRepository(
             existing.exercises.forEach { existingEntry ->
                 val exEntity = existingEntry.sessionExercise
                 if (exEntity.deletedAt == null && exEntity.id !in retainedExerciseSet) {
-                    exercisesToUpsert += exEntity.copy(
-                        updatedAt = nowEpoch,
-                        deletedAt = nowEpoch,
-                        syncStatus = SyncStatus.PENDING.name,
-                    )
+                    exercisesToUpsert += exEntity.tombstoned(nowEpoch)
                     existingEntry.sets
                         .filter { it.deletedAt == null }
                         .forEach { set ->
-                            setsToUpsert += set.copy(
-                                updatedAt = nowEpoch,
-                                deletedAt = nowEpoch,
-                                syncStatus = SyncStatus.PENDING.name,
-                            )
+                            setsToUpsert += set.tombstoned(nowEpoch)
                         }
                 } else if (exEntity.deletedAt == null) {
                     existingEntry.sets
                         .filter { it.deletedAt == null && it.id !in retainedSetIdSet }
                         .forEach { removedSet ->
-                            setsToUpsert += removedSet.copy(
-                                updatedAt = nowEpoch,
-                                deletedAt = nowEpoch,
-                                syncStatus = SyncStatus.PENDING.name,
-                            )
+                            setsToUpsert += removedSet.tombstoned(nowEpoch)
                         }
                 }
             }
@@ -501,6 +471,24 @@ class DefaultSessionRepository(
             .map { it.toDomain() }
         return sessionExercise.toDomain(domainSets)
     }
+
+    private fun SessionEntity.tombstoned(nowEpoch: Long): SessionEntity = copy(
+        updatedAt = nowEpoch,
+        deletedAt = nowEpoch,
+        syncStatus = SyncStatus.PENDING.name,
+    )
+
+    private fun SessionExerciseEntity.tombstoned(nowEpoch: Long): SessionExerciseEntity = copy(
+        updatedAt = nowEpoch,
+        deletedAt = nowEpoch,
+        syncStatus = SyncStatus.PENDING.name,
+    )
+
+    private fun SessionSetEntity.tombstoned(nowEpoch: Long): SessionSetEntity = copy(
+        updatedAt = nowEpoch,
+        deletedAt = nowEpoch,
+        syncStatus = SyncStatus.PENDING.name,
+    )
 
     private fun normalizeZeroDouble(value: Double): Double = if (value == 0.0) 0.0 else value
 

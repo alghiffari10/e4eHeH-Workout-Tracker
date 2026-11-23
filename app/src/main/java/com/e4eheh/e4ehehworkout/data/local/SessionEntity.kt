@@ -124,22 +124,6 @@ fun SessionEntity.toDomain(exercises: List<SessionExercise>): Session = Session(
     syncStatus = SyncStatus.valueOf(syncStatus),
 )
 
-fun Session.toEntity(): SessionEntity = SessionEntity(
-    id = id,
-    routineId = routineId,
-    title = title,
-    discipline = discipline.name,
-    status = status.name,
-    startedAt = startedAt.toEpochMilli(),
-    completedAt = completedAt?.toEpochMilli(),
-    durationSeconds = durationSeconds,
-    notes = notes,
-    createdAt = createdAt.toEpochMilli(),
-    updatedAt = updatedAt.toEpochMilli(),
-    deletedAt = deletedAt?.toEpochMilli(),
-    syncStatus = syncStatus.name,
-)
-
 fun SessionExerciseEntity.toDomain(sets: List<SessionSet>): SessionExercise = SessionExercise(
     id = id,
     sessionId = sessionId,
@@ -154,21 +138,6 @@ fun SessionExerciseEntity.toDomain(sets: List<SessionSet>): SessionExercise = Se
     updatedAt = Instant.ofEpochMilli(updatedAt),
     deletedAt = deletedAt?.let(Instant::ofEpochMilli),
     syncStatus = SyncStatus.valueOf(syncStatus),
-)
-
-fun SessionExercise.toEntity(): SessionExerciseEntity = SessionExerciseEntity(
-    id = id,
-    sessionId = sessionId,
-    exerciseId = exerciseId,
-    exerciseName = exerciseName,
-    exerciseDiscipline = exerciseDiscipline.name,
-    trackingMode = trackingMode.name,
-    sortOrder = sortOrder,
-    notes = notes,
-    createdAt = createdAt.toEpochMilli(),
-    updatedAt = updatedAt.toEpochMilli(),
-    deletedAt = deletedAt?.toEpochMilli(),
-    syncStatus = syncStatus.name,
 )
 
 fun SessionSetEntity.toDomain(): SessionSet = SessionSet(
@@ -186,21 +155,4 @@ fun SessionSetEntity.toDomain(): SessionSet = SessionSet(
     updatedAt = Instant.ofEpochMilli(updatedAt),
     deletedAt = deletedAt?.let(Instant::ofEpochMilli),
     syncStatus = SyncStatus.valueOf(syncStatus),
-)
-
-fun SessionSet.toEntity(): SessionSetEntity = SessionSetEntity(
-    id = id,
-    sessionExerciseId = sessionExerciseId,
-    sortOrder = sortOrder,
-    reps = reps,
-    loadKg = loadKg,
-    durationSeconds = durationSeconds,
-    distanceKm = distanceKm,
-    rounds = rounds,
-    isCompleted = isCompleted,
-    isWarmup = isWarmup,
-    createdAt = createdAt.toEpochMilli(),
-    updatedAt = updatedAt.toEpochMilli(),
-    deletedAt = deletedAt?.toEpochMilli(),
-    syncStatus = syncStatus.name,
 )

@@ -53,6 +53,9 @@ data class ActiveSessionSetDraft(
     val isCompleted: Boolean = false,
     val isWarmup: Boolean = false,
 ) {
+    val isBodyweight: Boolean
+        get() = (loadKg ?: 0.0) == 0.0
+
     fun reformatForUnits(
         trackingMode: TrackingMode,
         weightUnit: WeightUnit,
@@ -219,7 +222,10 @@ data class ActiveSessionUiState(
     val showExercisePicker: Boolean = false,
     val pickerDisciplineFilter: Discipline? = null,
     val inlineExercise: InlineExerciseDraft? = null,
-)
+) {
+    val isEditable: Boolean
+        get() = isLoaded && !isMissing && !isCompleted && !isFinishing
+}
 
 /** User actions dispatched from the active Session logger and inline Exercise picker. */
 sealed interface ActiveSessionAction {
@@ -266,7 +272,7 @@ class ActiveSessionViewModel(
     private val clock: Clock,
 ) : ViewModel() {
     private val persistMutex = Mutex()
-    private val recentlyCreatedExercises = MutableStateFlow<Map<String, Exercise>>(emptyMap())
+    private var lastPersistedInput: SessionDraftInput? = null
     private val internalState = MutableStateFlow(ActiveSessionUiState(sessionId = sessionId))
 
     val uiState: StateFlow<ActiveSessionUiState> = combine(
@@ -325,7 +331,7 @@ class ActiveSessionViewModel(
                 mutateDraftAndAutoSave { it.copy(notes = action.notes) }
 
             ActiveSessionAction.OpenExercisePicker -> {
-                if (!canEdit()) return
+                if (!internalState.value.isEditable) return
                 internalState.update {
                     it.copy(
                         showExercisePicker = true,
@@ -350,9 +356,8 @@ class ActiveSessionViewModel(
             }
 
             is ActiveSessionAction.AddExistingExercise -> {
-                if (!canEdit()) return
+                if (!internalState.value.isEditable) return
                 val exercise = uiState.value.availableExercises.firstOrNull { it.id == action.exerciseId }
-                    ?: recentlyCreatedExercises.value[action.exerciseId]
                     ?: return
                 mutateStateAndAutoSave { state ->
                     state.copy(
@@ -364,7 +369,7 @@ class ActiveSessionViewModel(
             }
 
             ActiveSessionAction.OpenInlineExerciseCreator -> {
-                if (!canEdit()) return
+                if (!internalState.value.isEditable) return
                 internalState.update { state ->
                     state.copy(
                         inlineExercise = InlineExerciseDraft(
@@ -411,58 +416,58 @@ class ActiveSessionViewModel(
                 mutateDraftAndAutoSave { it.removeSet(action.exerciseIndex, action.setIndex) }
 
             is ActiveSessionAction.ToggleSetCompleted ->
-                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) {
-                    it.copy(isCompleted = !it.isCompleted)
+                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) { _, set ->
+                    set.copy(isCompleted = !set.isCompleted)
                 }
 
             is ActiveSessionAction.ToggleSetWarmup ->
-                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) {
-                    it.copy(isWarmup = !it.isWarmup)
+                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) { _, set ->
+                    set.copy(isWarmup = !set.isWarmup)
                 }
 
             is ActiveSessionAction.UpdateSetReps ->
-                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) {
-                    it.copy(repsText = sanitizeNonNegativeInt(action.text))
+                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) { _, set ->
+                    set.copy(repsText = sanitizeNonNegativeInt(action.text))
                 }
 
             is ActiveSessionAction.UpdateSetLoad ->
-                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) { set ->
+                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) { state, set ->
                     val sanitized = sanitizeNonNegativeDecimal(action.text)
                     val parsed = sanitized.toDoubleOrNull()
                     val canonicalKg = parsed?.let {
-                        UnitConverter.weightToCanonicalKg(it, internalState.value.weightUnit)
+                        UnitConverter.weightToCanonicalKg(it, state.weightUnit)
                     }
                     set.copy(loadText = sanitized, loadKg = canonicalKg)
                 }
 
             is ActiveSessionAction.UpdateSetHoldSeconds ->
-                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) {
-                    it.copy(holdSecondsText = sanitizeNonNegativeInt(action.text))
+                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) { _, set ->
+                    set.copy(holdSecondsText = sanitizeNonNegativeInt(action.text))
                 }
 
             is ActiveSessionAction.UpdateSetDistance ->
-                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) { set ->
+                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) { state, set ->
                     val sanitized = sanitizeNonNegativeDecimal(action.text)
                     val parsed = sanitized.toDoubleOrNull()
                     val canonicalKm = parsed?.let {
-                        UnitConverter.distanceToCanonicalKm(it, internalState.value.distanceUnit)
+                        UnitConverter.distanceToCanonicalKm(it, state.distanceUnit)
                     }
                     set.copy(distanceText = sanitized, distanceKm = canonicalKm)
                 }
 
             is ActiveSessionAction.UpdateSetDurationMinutes ->
-                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) {
-                    it.copy(durationMinText = sanitizeNonNegativeInt(action.text))
+                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) { _, set ->
+                    set.copy(durationMinText = sanitizeNonNegativeInt(action.text))
                 }
 
             is ActiveSessionAction.UpdateSetDurationSeconds ->
-                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) {
-                    it.copy(durationSecText = sanitizeNonNegativeInt(action.text))
+                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) { _, set ->
+                    set.copy(durationSecText = sanitizeNonNegativeInt(action.text))
                 }
 
             is ActiveSessionAction.UpdateSetRounds ->
-                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) {
-                    it.copy(roundsText = sanitizeNonNegativeInt(action.text))
+                mutateSetAndAutoSave(action.exerciseIndex, action.setIndex) { _, set ->
+                    set.copy(roundsText = sanitizeNonNegativeInt(action.text))
                 }
 
             ActiveSessionAction.RefreshTimer -> {
@@ -477,11 +482,6 @@ class ActiveSessionViewModel(
 
             ActiveSessionAction.FinishSession -> finishSession()
         }
-    }
-
-    private fun canEdit(): Boolean {
-        val current = internalState.value
-        return current.isLoaded && !current.isMissing && !current.isCompleted && !current.isFinishing
     }
 
     private fun updateInlineExercise(transform: (InlineExerciseDraft) -> InlineExerciseDraft) {
@@ -501,19 +501,23 @@ class ActiveSessionViewModel(
     private inline fun mutateSetAndAutoSave(
         exerciseIndex: Int,
         setIndex: Int,
-        crossinline transform: (ActiveSessionSetDraft) -> ActiveSessionSetDraft,
+        crossinline transform: (ActiveSessionUiState, ActiveSessionSetDraft) -> ActiveSessionSetDraft,
     ) {
-        mutateDraftAndAutoSave { draft ->
-            draft.updateSet(exerciseIndex, setIndex) { transform(it) }
+        mutateStateAndAutoSave { state ->
+            state.copy(
+                draft = state.draft.updateSet(exerciseIndex, setIndex) { set ->
+                    transform(state, set)
+                },
+            )
         }
     }
 
     private inline fun mutateStateAndAutoSave(
         crossinline transform: (ActiveSessionUiState) -> ActiveSessionUiState,
     ) {
-        if (!canEdit()) return
+        if (!internalState.value.isEditable) return
         internalState.update { current ->
-            if (!current.isLoaded || current.isMissing || current.isCompleted || current.isFinishing) {
+            if (!current.isEditable) {
                 current
             } else {
                 transform(current).copy(
@@ -529,11 +533,16 @@ class ActiveSessionViewModel(
             withContext(NonCancellable) {
                 persistMutex.withLock {
                     val snapshot = internalState.value
-                    if (!snapshot.isLoaded || snapshot.isMissing || snapshot.isCompleted || snapshot.isFinishing) {
+                    if (!snapshot.isEditable) {
+                        return@withLock
+                    }
+                    val draftInput = snapshot.draft.toDraftInput()
+                    if (draftInput == lastPersistedInput) {
                         return@withLock
                     }
                     try {
-                        sessionRepository.saveDraft(sessionId, snapshot.draft.toDraftInput())
+                        sessionRepository.saveDraft(sessionId, draftInput)
+                        lastPersistedInput = draftInput
                     } catch (_: NoSuchElementException) {
                         // Session was deleted concurrently.
                     } catch (_: IllegalStateException) {
@@ -545,7 +554,7 @@ class ActiveSessionViewModel(
     }
 
     private fun saveInlineExercise() {
-        if (!canEdit()) return
+        if (!internalState.value.isEditable) return
         val inline = internalState.value.inlineExercise ?: return
         if (inline.isSaving) return
 
@@ -558,26 +567,40 @@ class ActiveSessionViewModel(
         updateInlineExercise { it.copy(isSaving = true, nameError = null) }
 
         viewModelScope.launch {
-            val created = exerciseRepository.create(
-                ExerciseInput(
-                    name = trimmedName,
-                    discipline = inline.discipline,
-                    trackingMode = inline.trackingMode,
+            val created = try {
+                exerciseRepository.create(
+                    ExerciseInput(
+                        name = trimmedName,
+                        discipline = inline.discipline,
+                        trackingMode = inline.trackingMode,
+                    )
                 )
-            )
-            recentlyCreatedExercises.update { it + (created.id to created) }
-            mutateStateAndAutoSave { state ->
-                state.copy(
-                    draft = state.draft.addExercise(created),
-                    showExercisePicker = false,
-                    inlineExercise = null,
-                )
+            } catch (_: Exception) {
+                updateInlineExercise { it.copy(isSaving = false) }
+                return@launch
+            }
+            var shouldAutoSave = false
+            internalState.update { current ->
+                shouldAutoSave = current.isEditable
+                if (!current.isEditable) {
+                    current.copy(inlineExercise = null)
+                } else {
+                    current.copy(
+                        draft = current.draft.addExercise(created),
+                        showExercisePicker = false,
+                        inlineExercise = null,
+                        elapsedSeconds = computeElapsedSeconds(current.startedAt),
+                    )
+                }
+            }
+            if (shouldAutoSave) {
+                launchAutoSave()
             }
         }
     }
 
     private fun finishSession() {
-        if (!canEdit()) return
+        if (!internalState.value.isEditable) return
         internalState.update { it.copy(isFinishing = true) }
 
         viewModelScope.launch {
@@ -676,23 +699,8 @@ class ActiveSessionViewModel(
         return ActiveSessionSetDraft(
             id = id,
             repsText = reps?.toString().orEmpty(),
-            loadText = if (trackingMode == TrackingMode.REPS_AND_LOAD &&
-                loadKg != null &&
-                loadKg > 0.0
-            ) {
-                UnitConverter.formatWeightValue(loadKg, weightUnit)
-            } else {
-                ""
-            },
             holdSecondsText = if (trackingMode == TrackingMode.HOLD_DURATION) {
                 durationSeconds?.toString().orEmpty()
-            } else {
-                ""
-            },
-            distanceText = if (trackingMode == TrackingMode.DISTANCE_AND_TIME &&
-                distanceKm != null
-            ) {
-                UnitConverter.formatDistanceValue(distanceKm, distanceUnit)
             } else {
                 ""
             },
@@ -703,7 +711,7 @@ class ActiveSessionViewModel(
             distanceKm = distanceKm,
             isCompleted = isCompleted,
             isWarmup = isWarmup,
-        )
+        ).reformatForUnits(trackingMode, weightUnit, distanceUnit)
     }
 
     private fun computeElapsedSeconds(startedAt: Instant?): Long =

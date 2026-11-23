@@ -2,6 +2,7 @@ package com.e4eheh.e4ehehworkout.ui
 
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
@@ -16,6 +17,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.e4eheh.e4ehehworkout.di.AppContainer
@@ -142,6 +144,14 @@ class ActiveSessionTest {
         composeTestRule.onNodeWithTag("session_set_reps_1_1").performScrollTo().performTextInput("10")
         composeTestRule.onNodeWithTag("session_set_load_1_1").performScrollTo().performTextInput("15")
         composeTestRule.onNodeWithTag("session_set_check_1_1").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("session_set_check_1_1").assertIsOn()
+
+        // Uncheck, edit previously entered reps, and re-check
+        composeTestRule.onNodeWithTag("session_set_check_1_1").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("session_set_check_1_1").assertIsOff()
+        composeTestRule.onNodeWithTag("session_set_reps_1_1").performScrollTo().performTextReplacement("12")
+        composeTestRule.onNodeWithTag("session_set_check_1_1").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("session_set_check_1_1").assertIsOn()
 
         composeTestRule.onNodeWithTag("session_exercise_add_set_1").performScrollTo().performClick()
         composeTestRule.onNodeWithTag("session_set_delete_1_2").performScrollTo().performClick()
@@ -215,6 +225,7 @@ class ActiveSessionTest {
         assertEquals(0.0, midDraft.exercises[1].sets[0].loadKg!!, 1e-6)
         assertTrue(midDraft.exercises[1].sets[0].isBodyweight)
         assertFalse(midDraft.exercises[1].sets[1].isWarmup)
+        assertEquals(12, midDraft.exercises[1].sets[1].reps)
         assertEquals(15.0, midDraft.exercises[1].sets[1].loadKg!!, 1e-6)
         assertEquals(45, midDraft.exercises[2].sets.single().durationSeconds)
         assertEquals(10, midDraft.exercises[3].sets.single().rounds)
@@ -226,8 +237,14 @@ class ActiveSessionTest {
         }
         assertEquals(1, midWithDeleted.exercises[1].sets.count { it.deletedAt != null })
 
-        // Advance workout clock and finish Session
+        // Advance workout clock, verify running timer ticks on screen, and finish Session
         clock.advanceBy(Duration.ofMinutes(35).plusSeconds(20))
+        composeTestRule.waitUntil(timeoutMillis = 5_000) {
+            composeTestRule
+                .onAllNodes(hasTestTag("active_session_timer") and hasText("35:20"))
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
         composeTestRule.onNodeWithTag("active_session_finish_button").performClick()
 
         composeTestRule.waitUntil(timeoutMillis = 5_000) {

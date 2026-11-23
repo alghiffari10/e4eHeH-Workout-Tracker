@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -48,6 +49,7 @@ import com.e4eheh.e4ehehworkout.ui.components.ArkhamPrimaryButton
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSecondaryButton
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSectionHeader
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamTopHeader
+import com.e4eheh.e4ehehworkout.ui.components.arkhamSelectableColors
 import com.e4eheh.e4ehehworkout.ui.components.arkhamTextFieldColors
 import com.e4eheh.e4ehehworkout.ui.components.formatElapsedDuration
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
@@ -65,6 +67,21 @@ fun ActiveSessionScreen(
     onExitSession: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    LaunchedEffect(uiState.sessionId, uiState.isLoaded, uiState.isCompleted, uiState.isMissing) {
+        if (uiState.isLoaded && !uiState.isCompleted && !uiState.isMissing) {
+            while (true) {
+                delay(1_000L)
+                onAction(ActiveSessionAction.RefreshTimer)
+            }
+        }
+    }
+
+    LaunchedEffect(uiState.isCompleted) {
+        if (uiState.isCompleted) {
+            onExitSession()
+        }
+    }
+
     if (uiState.showExercisePicker) {
         val existingIds = uiState.draft.exercises.mapTo(HashSet()) { it.exerciseId }
         ArkhamExercisePickerView(
@@ -92,21 +109,6 @@ fun ActiveSessionScreen(
             modifier = modifier,
         )
         return
-    }
-
-    LaunchedEffect(uiState.sessionId, uiState.isLoaded, uiState.isCompleted, uiState.isMissing) {
-        if (uiState.isLoaded && !uiState.isCompleted && !uiState.isMissing) {
-            while (true) {
-                delay(1_000L)
-                onAction(ActiveSessionAction.RefreshTimer)
-            }
-        }
-    }
-
-    LaunchedEffect(uiState.isCompleted) {
-        if (uiState.isCompleted) {
-            onExitSession()
-        }
     }
 
     BackHandler(enabled = !uiState.isFinishing) {
@@ -178,6 +180,7 @@ fun ActiveSessionScreen(
         ) {
             SessionMetadataPanel(
                 draft = uiState.draft,
+                enabled = uiState.isEditable,
                 onTitleChange = { onAction(ActiveSessionAction.UpdateTitle(it)) },
                 onDisciplineChange = { onAction(ActiveSessionAction.UpdateDiscipline(it)) },
                 onNotesChange = { onAction(ActiveSessionAction.UpdateNotes(it)) },
@@ -255,6 +258,7 @@ fun ActiveSessionScreen(
 @Composable
 private fun SessionMetadataPanel(
     draft: ActiveSessionDraft,
+    enabled: Boolean,
     onTitleChange: (String) -> Unit,
     onDisciplineChange: (Discipline) -> Unit,
     onNotesChange: (String) -> Unit,
@@ -267,6 +271,7 @@ private fun SessionMetadataPanel(
             OutlinedTextField(
                 value = draft.title,
                 onValueChange = onTitleChange,
+                enabled = enabled,
                 label = { Text("Session Title") },
                 placeholder = { Text("e.g., Calisthenics Push") },
                 singleLine = true,
@@ -289,6 +294,7 @@ private fun SessionMetadataPanel(
             OutlinedTextField(
                 value = draft.notes,
                 onValueChange = onNotesChange,
+                enabled = enabled,
                 label = { Text("Session Notes (Optional)") },
                 minLines = 2,
                 maxLines = 4,
@@ -489,7 +495,7 @@ private fun SessionSetRow(
                                 .testTag("session_set_load_${exerciseIndex}_$setIndex"),
                         )
                     }
-                    if ((setDraft.loadKg ?: 0.0) == 0.0) {
+                    if (setDraft.isBodyweight) {
                         Text(
                             text = "MODE: BODYWEIGHT",
                             style = ArkhamTelemetryStyle,
@@ -554,39 +560,13 @@ private fun SessionSetRow(
                                 .weight(1.2f)
                                 .testTag("session_set_distance_${exerciseIndex}_$setIndex"),
                         )
-                        CompactTelemetryField(
-                            value = setDraft.durationMinText,
-                            onValueChange = {
-                                onAction(
-                                    ActiveSessionAction.UpdateSetDurationMinutes(
-                                        exerciseIndex,
-                                        setIndex,
-                                        it,
-                                    )
-                                )
-                            },
-                            label = "Min",
-                            keyboardType = KeyboardType.Number,
-                            modifier = Modifier
-                                .weight(0.9f)
-                                .testTag("session_set_duration_min_${exerciseIndex}_$setIndex"),
-                        )
-                        CompactTelemetryField(
-                            value = setDraft.durationSecText,
-                            onValueChange = {
-                                onAction(
-                                    ActiveSessionAction.UpdateSetDurationSeconds(
-                                        exerciseIndex,
-                                        setIndex,
-                                        it,
-                                    )
-                                )
-                            },
-                            label = "Sec",
-                            keyboardType = KeyboardType.Number,
-                            modifier = Modifier
-                                .weight(0.9f)
-                                .testTag("session_set_duration_sec_${exerciseIndex}_$setIndex"),
+                        DurationMinSecFields(
+                            exerciseIndex = exerciseIndex,
+                            setIndex = setIndex,
+                            durationMinText = setDraft.durationMinText,
+                            durationSecText = setDraft.durationSecText,
+                            fieldWeight = 0.9f,
+                            onAction = onAction,
                         )
                     }
                 }
@@ -636,39 +616,13 @@ private fun SessionSetRow(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            CompactTelemetryField(
-                                value = setDraft.durationMinText,
-                                onValueChange = {
-                                    onAction(
-                                        ActiveSessionAction.UpdateSetDurationMinutes(
-                                            exerciseIndex,
-                                            setIndex,
-                                            it,
-                                        )
-                                    )
-                                },
-                                label = "Min",
-                                keyboardType = KeyboardType.Number,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("session_set_duration_min_${exerciseIndex}_$setIndex"),
-                            )
-                            CompactTelemetryField(
-                                value = setDraft.durationSecText,
-                                onValueChange = {
-                                    onAction(
-                                        ActiveSessionAction.UpdateSetDurationSeconds(
-                                            exerciseIndex,
-                                            setIndex,
-                                            it,
-                                        )
-                                    )
-                                },
-                                label = "Sec",
-                                keyboardType = KeyboardType.Number,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("session_set_duration_sec_${exerciseIndex}_$setIndex"),
+                            DurationMinSecFields(
+                                exerciseIndex = exerciseIndex,
+                                setIndex = setIndex,
+                                durationMinText = setDraft.durationMinText,
+                                durationSecText = setDraft.durationSecText,
+                                fieldWeight = 1f,
+                                onAction = onAction,
                             )
                         }
                     }
@@ -679,18 +633,49 @@ private fun SessionSetRow(
 }
 
 @Composable
+private fun RowScope.DurationMinSecFields(
+    exerciseIndex: Int,
+    setIndex: Int,
+    durationMinText: String,
+    durationSecText: String,
+    fieldWeight: Float,
+    onAction: (ActiveSessionAction) -> Unit,
+) {
+    CompactTelemetryField(
+        value = durationMinText,
+        onValueChange = {
+            onAction(ActiveSessionAction.UpdateSetDurationMinutes(exerciseIndex, setIndex, it))
+        },
+        label = "Min",
+        keyboardType = KeyboardType.Number,
+        modifier = Modifier
+            .weight(fieldWeight)
+            .testTag("session_set_duration_min_${exerciseIndex}_$setIndex"),
+    )
+    CompactTelemetryField(
+        value = durationSecText,
+        onValueChange = {
+            onAction(ActiveSessionAction.UpdateSetDurationSeconds(exerciseIndex, setIndex, it))
+        },
+        label = "Sec",
+        keyboardType = KeyboardType.Number,
+        modifier = Modifier
+            .weight(fieldWeight)
+            .testTag("session_set_duration_sec_${exerciseIndex}_$setIndex"),
+    )
+}
+
+@Composable
 private fun SetTypeToggleChip(
     isWarmup: Boolean,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val borderColor = if (isWarmup) ArkhamColors.TerminalEmerald else ArkhamColors.TerminalEmeraldBright
-    val containerColor = if (isWarmup) {
-        ArkhamColors.ObsidianPanel
-    } else {
-        ArkhamColors.TerminalEmerald.copy(alpha = 0.25f)
-    }
-    val textColor = if (isWarmup) ArkhamColors.MintMuted else ArkhamColors.PhosphorGreenDim
+    val (borderColor, containerColor, textColor) = arkhamSelectableColors(
+        selected = !isWarmup,
+        selectedContainerAlpha = 0.25f,
+        labelPrefix = "setTypeChip",
+    )
 
     Surface(
         modifier = modifier.toggleable(

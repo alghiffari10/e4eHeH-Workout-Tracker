@@ -8,11 +8,13 @@ import com.e4eheh.e4ehehworkout.data.repository.DefaultSessionRepository
 import com.e4eheh.e4ehehworkout.data.repository.DefaultUserPreferencesRepository
 import com.e4eheh.e4ehehworkout.domain.model.Discipline
 import com.e4eheh.e4ehehworkout.domain.model.DistanceUnit
+import com.e4eheh.e4ehehworkout.domain.model.Exercise
 import com.e4eheh.e4ehehworkout.domain.model.ExerciseInput
 import com.e4eheh.e4ehehworkout.domain.model.SessionStatus
 import com.e4eheh.e4ehehworkout.domain.model.SyncStatus
 import com.e4eheh.e4ehehworkout.domain.model.TrackingMode
 import com.e4eheh.e4ehehworkout.domain.model.WeightUnit
+import com.e4eheh.e4ehehworkout.domain.repository.ExerciseRepository
 import com.e4eheh.e4ehehworkout.domain.unit.UnitConverter
 import com.e4eheh.e4ehehworkout.testing.FakeClock
 import java.time.Duration
@@ -314,6 +316,115 @@ class ActiveSessionViewModelTest {
             assertEquals(clock.instant(), completed.completedAt)
             assertEquals(1122L, completed.durationSeconds)
             assertEquals(SyncStatus.PENDING, completed.syncStatus)
+
+            collector.cancel()
+        }
+
+    @Test
+    fun inlineExerciseCreation_recoversFromFailure_allowsCloseAndRetry() =
+        runTest(testDispatcher) {
+            var shouldThrow = true
+            val flakyExerciseRepository = object : ExerciseRepository by exerciseRepository {
+                override suspend fun create(input: ExerciseInput): Exercise {
+                    if (shouldThrow) throw IllegalStateException("Create failed")
+                    return exerciseRepository.create(input)
+                }
+            }
+            val session = sessionRepository.createLiveBlankSession()
+            val viewModel = ActiveSessionViewModel(
+                sessionId = session.id,
+                sessionRepository = sessionRepository,
+                exerciseRepository = flakyExerciseRepository,
+                userPreferencesRepository = userPreferencesRepository,
+                clock = clock,
+            )
+            val collector = backgroundScope.launch { viewModel.uiState.collect {} }
+            advanceUntilIdle()
+
+            viewModel.onAction(ActiveSessionAction.OpenExercisePicker)
+            viewModel.onAction(ActiveSessionAction.OpenInlineExerciseCreator)
+            viewModel.onAction(ActiveSessionAction.UpdateInlineExerciseName("Archer Push-up"))
+            viewModel.onAction(ActiveSessionAction.SaveInlineExercise)
+            advanceUntilIdle()
+
+            assertFalse(viewModel.uiState.value.inlineExercise?.isSaving ?: true)
+            assertTrue(viewModel.uiState.value.showExercisePicker)
+            assertTrue(viewModel.uiState.value.draft.exercises.isEmpty())
+
+            // Retry succeeds once repository stops throwing
+            shouldThrow = false
+            viewModel.onAction(ActiveSessionAction.SaveInlineExercise)
+            advanceUntilIdle()
+
+            assertFalse(viewModel.uiState.value.showExercisePicker)
+            assertNull(viewModel.uiState.value.inlineExercise)
+            assertEquals("Archer Push-up", viewModel.uiState.value.draft.exercises.single().exerciseName)
+
+            // Verify CloseInlineExerciseCreator / CloseExercisePicker are not wedged after error either
+            shouldThrow = true
+            viewModel.onAction(ActiveSessionAction.OpenExercisePicker)
+            viewModel.onAction(ActiveSessionAction.OpenInlineExerciseCreator)
+            viewModel.onAction(ActiveSessionAction.UpdateInlineExerciseName("Muscle-up"))
+            viewModel.onAction(ActiveSessionAction.SaveInlineExercise)
+            advanceUntilIdle()
+
+            viewModel.onAction(ActiveSessionAction.CloseInlineExerciseCreator)
+            assertNull(viewModel.uiState.value.inlineExercise)
+            viewModel.onAction(ActiveSessionAction.CloseExercisePicker)
+            assertFalse(viewModel.uiState.value.showExercisePicker)
+
+            collector.cancel()
+        }
+
+    @Test
+    fun midSessionUnitPreferenceChange_reformatsDisplayWithoutCorruptingCanonicalMetrics() =
+        runTest(testDispatcher) {
+            val dip = exerciseRepository.create(
+                ExerciseInput("Weighted Dip", Discipline.CALISTHENICS, TrackingMode.REPS_AND_LOAD)
+            )
+            val run = exerciseRepository.create(
+                ExerciseInput("Road Run", Discipline.CARDIO, TrackingMode.DISTANCE_AND_TIME)
+            )
+            val session = sessionRepository.createLiveBlankSession()
+            val viewModel = createViewModel(session.id)
+            val collector = backgroundScope.launch { viewModel.uiState.collect {} }
+            advanceUntilIdle()
+
+            viewModel.onAction(ActiveSessionAction.OpenExercisePicker)
+            viewModel.onAction(ActiveSessionAction.AddExistingExercise(dip.id))
+            viewModel.onAction(ActiveSessionAction.OpenExercisePicker)
+            viewModel.onAction(ActiveSessionAction.AddExistingExercise(run.id))
+            viewModel.onAction(ActiveSessionAction.UpdateSetLoad(0, 0, "20"))
+            viewModel.onAction(ActiveSessionAction.UpdateSetDistance(1, 0, "10"))
+            advanceUntilIdle()
+
+            userPreferencesRepository.updateWeightUnit(WeightUnit.LB)
+            userPreferencesRepository.updateDistanceUnit(DistanceUnit.MI)
+            advanceUntilIdle()
+
+            val imperialState = viewModel.uiState.value
+            assertEquals(WeightUnit.LB, imperialState.weightUnit)
+            assertEquals(DistanceUnit.MI, imperialState.distanceUnit)
+            assertEquals(
+                UnitConverter.formatWeightValue(20.0, WeightUnit.LB),
+                imperialState.draft.exercises[0].sets.single().loadText,
+            )
+            assertEquals(
+                UnitConverter.formatDistanceValue(10.0, DistanceUnit.MI),
+                imperialState.draft.exercises[1].sets.single().distanceText,
+            )
+            assertEquals(20.0, imperialState.draft.exercises[0].sets.single().loadKg!!, 1e-6)
+            assertEquals(10.0, imperialState.draft.exercises[1].sets.single().distanceKm!!, 1e-6)
+
+            userPreferencesRepository.updateWeightUnit(WeightUnit.KG)
+            userPreferencesRepository.updateDistanceUnit(DistanceUnit.KM)
+            advanceUntilIdle()
+
+            val metricState = viewModel.uiState.value
+            assertEquals("20", metricState.draft.exercises[0].sets.single().loadText)
+            assertEquals("10", metricState.draft.exercises[1].sets.single().distanceText)
+            assertEquals(20.0, metricState.draft.exercises[0].sets.single().loadKg!!, 1e-6)
+            assertEquals(10.0, metricState.draft.exercises[1].sets.single().distanceKm!!, 1e-6)
 
             collector.cancel()
         }
