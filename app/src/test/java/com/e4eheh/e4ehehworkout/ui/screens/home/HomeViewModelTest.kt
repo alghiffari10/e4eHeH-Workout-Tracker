@@ -209,16 +209,18 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun discardFailure_resetsIsDiscardingAndPendingDialogWithoutWedgingUi() =
+    fun discardFailure_surfacesErrorAndAllowsRetryWithoutWedgingUi() =
         runTest(testDispatcher) {
             val session = sessionRepository.createLiveBlankSession(title = "Failing Draft")
-            val failingRepo = object : SessionRepository by sessionRepository {
+            var shouldFail = true
+            val flakyRepo = object : SessionRepository by sessionRepository {
                 override suspend fun softDelete(id: String): Session {
-                    throw IllegalStateException("Disk I/O error")
+                    if (shouldFail) throw IllegalStateException("Disk I/O error")
+                    return sessionRepository.softDelete(id)
                 }
             }
 
-            val viewModel = createViewModel(sessions = failingRepo)
+            val viewModel = createViewModel(sessions = flakyRepo)
             val collector = backgroundScope.launch { viewModel.uiState.collect {} }
             advanceUntilIdle()
 
@@ -229,6 +231,17 @@ class HomeViewModelTest {
             assertFalse(viewModel.uiState.value.isDiscarding)
             assertNull(viewModel.uiState.value.pendingDiscardSession)
             assertNotNull(viewModel.uiState.value.activeSessionBanner)
+            assertNotNull(viewModel.uiState.value.discardError)
+
+            // Retrying after recovery clears the error and removes the banner
+            shouldFail = false
+            viewModel.onAction(HomeAction.RequestDiscardActiveSession)
+            assertNull(viewModel.uiState.value.discardError)
+            viewModel.onAction(HomeAction.ConfirmDiscardActiveSession)
+            advanceUntilIdle()
+
+            assertNull(viewModel.uiState.value.discardError)
+            assertNull(viewModel.uiState.value.activeSessionBanner)
 
             collector.cancel()
         }

@@ -35,6 +35,7 @@ data class HomeUiState(
     val activeSessionBanner: ActiveSessionBannerUi? = null,
     val pendingDiscardSession: ActiveSessionBannerUi? = null,
     val isDiscarding: Boolean = false,
+    val discardError: String? = null,
 )
 
 /** User and clock-tick actions dispatched from the Home screen. */
@@ -54,6 +55,7 @@ class HomeViewModel(
     private data class InternalState(
         val pendingDiscardSessionId: String? = null,
         val isDiscarding: Boolean = false,
+        val discardError: String? = null,
         val clockTick: Long = 0L,
     )
 
@@ -75,6 +77,7 @@ class HomeViewModel(
             activeSessionBanner = activeBanner,
             pendingDiscardSession = pendingDiscard,
             isDiscarding = state.isDiscarding,
+            discardError = if (activeBanner != null) state.discardError else null,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -90,7 +93,9 @@ class HomeViewModel(
 
             HomeAction.RequestDiscardActiveSession -> {
                 val activeId = uiState.value.activeSessionBanner?.sessionId ?: return
-                internalState.update { it.copy(pendingDiscardSessionId = activeId) }
+                internalState.update {
+                    it.copy(pendingDiscardSessionId = activeId, discardError = null)
+                }
             }
 
             HomeAction.DismissDiscardDialog -> {
@@ -109,18 +114,20 @@ class HomeViewModel(
             ?: uiState.value.activeSessionBanner?.sessionId
             ?: return
 
-        internalState.update { it.copy(isDiscarding = true) }
+        internalState.update { it.copy(isDiscarding = true, discardError = null) }
 
         viewModelScope.launch {
+            var errorMessage: String? = null
             try {
                 sessionRepository.softDelete(targetId)
             } catch (_: Exception) {
-                // Keep UI responsive even if storage deletion fails.
+                errorMessage = "Unable to discard active Session. Please try again."
             } finally {
                 internalState.update {
                     it.copy(
                         isDiscarding = false,
                         pendingDiscardSessionId = null,
+                        discardError = errorMessage,
                     )
                 }
             }

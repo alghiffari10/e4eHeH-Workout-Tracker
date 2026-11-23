@@ -50,12 +50,10 @@ class RestTimerController(
         durationSeconds: Int,
     ): RestTimerState {
         val safeDuration = durationSeconds.coerceAtLeast(1)
-        val now = clock.instant()
-        return RestTimerState(
-            status = RestTimerStatus.RUNNING,
+        return runningState(
             totalDurationSeconds = safeDuration,
             remainingSeconds = safeDuration,
-            endAt = now.plusSeconds(safeDuration.toLong()),
+            endAt = clock.instant().plusSeconds(safeDuration.toLong()),
             completionEventId = current.completionEventId,
         )
     }
@@ -69,8 +67,7 @@ class RestTimerController(
         if (remainingMillis <= 0L) {
             return complete(current)
         }
-        val ceilingSeconds = ((remainingMillis + 999L) / 1000L).toInt()
-        return current.copy(remainingSeconds = ceilingSeconds)
+        return current.copy(remainingSeconds = ceilSeconds(remainingMillis))
     }
 
     fun adjustBy(
@@ -83,10 +80,8 @@ class RestTimerController(
         val now = clock.instant()
         if (current.status == RestTimerStatus.COMPLETED) {
             return if (deltaSeconds > 0) {
-                val nextTotal = maxOf(current.totalDurationSeconds, deltaSeconds)
-                RestTimerState(
-                    status = RestTimerStatus.RUNNING,
-                    totalDurationSeconds = nextTotal,
+                runningState(
+                    totalDurationSeconds = maxOf(current.totalDurationSeconds, deltaSeconds),
                     remainingSeconds = deltaSeconds,
                     endAt = now.plusSeconds(deltaSeconds.toLong()),
                     completionEventId = current.completionEventId,
@@ -107,12 +102,12 @@ class RestTimerController(
         if (adjustedMillis <= 0L) {
             return complete(current)
         }
-        val nextRemaining = ((adjustedMillis + 999L) / 1000L).toInt()
-        return current.copy(
-            status = RestTimerStatus.RUNNING,
+        val nextRemaining = ceilSeconds(adjustedMillis)
+        return runningState(
             totalDurationSeconds = maxOf(current.totalDurationSeconds, nextRemaining),
             remainingSeconds = nextRemaining,
             endAt = adjustedEnd,
+            completionEventId = current.completionEventId,
         )
     }
 
@@ -123,6 +118,21 @@ class RestTimerController(
         endAt = null,
         completionEventId = current.completionEventId,
     )
+
+    private fun runningState(
+        totalDurationSeconds: Int,
+        remainingSeconds: Int,
+        endAt: Instant,
+        completionEventId: Long,
+    ): RestTimerState = RestTimerState(
+        status = RestTimerStatus.RUNNING,
+        totalDurationSeconds = totalDurationSeconds,
+        remainingSeconds = remainingSeconds,
+        endAt = endAt,
+        completionEventId = completionEventId,
+    )
+
+    private fun ceilSeconds(millis: Long): Int = ((millis + 999L) / 1000L).toInt()
 
     private fun complete(current: RestTimerState): RestTimerState = RestTimerState(
         status = RestTimerStatus.COMPLETED,

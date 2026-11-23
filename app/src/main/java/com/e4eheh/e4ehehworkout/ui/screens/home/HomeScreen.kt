@@ -92,6 +92,7 @@ fun HomeScreen(
             ActiveSessionResumeBanner(
                 banner = banner,
                 isDiscarding = uiState.isDiscarding,
+                discardError = uiState.discardError,
                 onResume = { onResumeSession(banner.sessionId) },
                 onDiscard = { onAction(HomeAction.RequestDiscardActiveSession) },
             )
@@ -133,6 +134,7 @@ fun HomeScreen(
 private fun ActiveSessionResumeBanner(
     banner: ActiveSessionBannerUi,
     isDiscarding: Boolean,
+    discardError: String?,
     onResume: () -> Unit,
     onDiscard: () -> Unit,
 ) {
@@ -143,6 +145,15 @@ private fun ActiveSessionResumeBanner(
         highlighted = true,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (discardError != null) {
+                Text(
+                    text = discardError,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ArkhamColors.AlertRed,
+                    modifier = Modifier.testTag("home_discard_error"),
+                )
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -184,6 +195,15 @@ private fun ActiveSessionResumeBanner(
                         banner.totalSetCount,
                     ),
                     accentColor = ArkhamColors.PhosphorGreenDim,
+                )
+            }
+
+            if (discardError != null) {
+                Text(
+                    text = discardError,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ArkhamColors.AlertRed,
+                    modifier = Modifier.testTag("home_discard_error"),
                 )
             }
 

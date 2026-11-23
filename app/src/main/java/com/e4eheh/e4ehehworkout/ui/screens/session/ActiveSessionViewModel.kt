@@ -172,6 +172,9 @@ data class ActiveSessionDraft(
             exercise.copy(sets = mutable)
         }
 
+    fun findSet(exerciseIndex: Int, setIndex: Int): ActiveSessionSetDraft? =
+        exercises.getOrNull(exerciseIndex)?.sets?.getOrNull(setIndex)
+
     fun updateSet(
         exerciseIndex: Int,
         setIndex: Int,
@@ -426,10 +429,7 @@ class ActiveSessionViewModel(
 
             is ActiveSessionAction.ToggleSetCompleted -> {
                 mutateStateAndAutoSave { state ->
-                    val targetSet = state.draft.exercises
-                        .getOrNull(action.exerciseIndex)
-                        ?.sets
-                        ?.getOrNull(action.setIndex)
+                    val targetSet = state.draft.findSet(action.exerciseIndex, action.setIndex)
                         ?: return@mutateStateAndAutoSave state
                     val becomingCompleted = !targetSet.isCompleted
                     val updatedDraft = state.draft.updateSet(action.exerciseIndex, action.setIndex) { set ->
@@ -510,34 +510,28 @@ class ActiveSessionViewModel(
                 }
             }
 
-            is ActiveSessionAction.AdjustRestTimer -> {
-                if (!internalState.value.isEditable) return
-                internalState.update { state ->
-                    if (!state.isEditable) {
-                        state
-                    } else {
-                        state.copy(
-                            restTimer = restTimerController.adjustBy(
-                                state.restTimer,
-                                action.deltaSeconds,
-                            ),
-                        )
-                    }
-                }
+            is ActiveSessionAction.AdjustRestTimer -> updateRestTimerIfEditable {
+                restTimerController.adjustBy(it, action.deltaSeconds)
             }
 
-            ActiveSessionAction.SkipRestTimer -> {
-                if (!internalState.value.isEditable) return
-                internalState.update { state ->
-                    if (!state.isEditable) {
-                        state
-                    } else {
-                        state.copy(restTimer = restTimerController.skip(state.restTimer))
-                    }
-                }
+            ActiveSessionAction.SkipRestTimer -> updateRestTimerIfEditable {
+                restTimerController.skip(it)
             }
 
             ActiveSessionAction.FinishSession -> finishSession()
+        }
+    }
+
+    private inline fun updateRestTimerIfEditable(
+        crossinline transform: (RestTimerState) -> RestTimerState,
+    ) {
+        if (!internalState.value.isEditable) return
+        internalState.update { state ->
+            if (!state.isEditable) {
+                state
+            } else {
+                state.copy(restTimer = transform(state.restTimer))
+            }
         }
     }
 
