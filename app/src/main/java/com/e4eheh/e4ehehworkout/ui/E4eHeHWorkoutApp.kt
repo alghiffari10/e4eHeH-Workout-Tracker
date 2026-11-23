@@ -90,10 +90,10 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding),
-                    enterTransition = { fadeIn(tween(ArkhamMotion.TransitionMs)) },
-                    exitTransition = { fadeOut(tween(ArkhamMotion.RevealMs)) },
-                    popEnterTransition = { fadeIn(tween(ArkhamMotion.TransitionMs)) },
-                    popExitTransition = { fadeOut(tween(ArkhamMotion.RevealMs)) },
+                    enterTransition = { fadeIn(tween(ArkhamMotion.TRANSITION_MS)) },
+                    exitTransition = { fadeOut(tween(ArkhamMotion.STATE_MS)) },
+                    popEnterTransition = { fadeIn(tween(ArkhamMotion.TRANSITION_MS)) },
+                    popExitTransition = { fadeOut(tween(ArkhamMotion.STATE_MS)) },
                 ) {
                     composable(TopLevelTab.HOME.route) {
                         HomeScreen(

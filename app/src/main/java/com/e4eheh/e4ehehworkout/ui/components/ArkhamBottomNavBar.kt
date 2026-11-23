@@ -126,7 +126,7 @@ private fun TabButton(
 ) {
     val tint by animateColorAsState(
         targetValue = if (selected) ArkhamColors.PhosphorGreen else ArkhamColors.MintMuted,
-        animationSpec = tween(durationMillis = ArkhamMotion.FastMs),
+        animationSpec = tween(durationMillis = ArkhamMotion.FAST_MS),
         label = "navTabTint",
     )
 

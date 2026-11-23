@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
@@ -60,31 +61,29 @@ fun ArkhamHudBackground(
                 )
                 x += gridStep
             }
-            var y = 0f
-            while (y <= size.height) {
-                drawLine(
-                    color = gridColor,
-                    start = Offset(0f, y),
-                    end = Offset(size.width, y),
-                    strokeWidth = 1f,
-                )
-                y += gridStep
-            }
-
-            val scanlineStep = 4.dp.toPx()
-            val scanlineColor = ArkhamColors.TerminalEmerald.copy(alpha = 0.06f)
-            var scanY = 0f
-            while (scanY <= size.height) {
-                drawLine(
-                    color = scanlineColor,
-                    start = Offset(0f, scanY),
-                    end = Offset(size.width, scanY),
-                    strokeWidth = 1f,
-                )
-                scanY += scanlineStep
-            }
+            drawHorizontalLines(stepPx = gridStep, color = gridColor)
+            drawHorizontalLines(
+                stepPx = 4.dp.toPx(),
+                color = ArkhamColors.TerminalEmerald.copy(alpha = 0.06f),
+            )
         }
         content()
+    }
+}
+
+private fun DrawScope.drawHorizontalLines(
+    stepPx: Float,
+    color: Color,
+) {
+    var y = 0f
+    while (y <= size.height) {
+        drawLine(
+            color = color,
+            start = Offset(0f, y),
+            end = Offset(size.width, y),
+            strokeWidth = 1f,
+        )
+        y += stepPx
     }
 }
 
@@ -99,12 +98,12 @@ fun ArkhamHudPanel(
 ) {
     val borderColor by animateColorAsState(
         targetValue = if (highlighted) ArkhamColors.PhosphorGreen else ArkhamColors.TerminalEmerald,
-        animationSpec = tween(durationMillis = ArkhamMotion.RevealMs),
+        animationSpec = tween(durationMillis = ArkhamMotion.STATE_MS),
         label = "hudPanelBorder",
     )
     val containerColor by animateColorAsState(
         targetValue = if (highlighted) ArkhamColors.ObsidianElevated else ArkhamColors.ObsidianSurface,
-        animationSpec = tween(durationMillis = ArkhamMotion.RevealMs),
+        animationSpec = tween(durationMillis = ArkhamMotion.STATE_MS),
         label = "hudPanelContainer",
     )
 
@@ -131,7 +130,7 @@ fun ArkhamHudChip(
 ) {
     val borderColor by animateColorAsState(
         targetValue = if (selected) ArkhamColors.PhosphorGreen else ArkhamColors.TerminalEmerald,
-        animationSpec = tween(durationMillis = ArkhamMotion.RevealMs),
+        animationSpec = tween(durationMillis = ArkhamMotion.STATE_MS),
         label = "hudChipBorder",
     )
     val containerColor by animateColorAsState(
@@ -140,12 +139,12 @@ fun ArkhamHudChip(
         } else {
             ArkhamColors.ObsidianPanel
         },
-        animationSpec = tween(durationMillis = ArkhamMotion.RevealMs),
+        animationSpec = tween(durationMillis = ArkhamMotion.STATE_MS),
         label = "hudChipContainer",
     )
     val textColor by animateColorAsState(
         targetValue = if (selected) ArkhamColors.PhosphorGreen else ArkhamColors.MintMuted,
-        animationSpec = tween(durationMillis = ArkhamMotion.RevealMs),
+        animationSpec = tween(durationMillis = ArkhamMotion.STATE_MS),
         label = "hudChipText",
     )
 

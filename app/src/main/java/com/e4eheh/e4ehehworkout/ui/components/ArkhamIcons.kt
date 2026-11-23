@@ -170,21 +170,6 @@ object ArkhamIcons {
         }
     }
 
-    val Close: ImageVector by lazy {
-        tacticalIcon("ArkhamClose") {
-            path(
-                stroke = SolidColor(Color.White),
-                strokeLineWidth = 2f,
-                strokeLineCap = StrokeCap.Square,
-            ) {
-                moveTo(6f, 6f)
-                lineTo(18f, 18f)
-                moveTo(18f, 6f)
-                lineTo(6f, 18f)
-            }
-        }
-    }
-
     private fun tacticalIcon(
         name: String,
         block: ImageVector.Builder.() -> Unit,

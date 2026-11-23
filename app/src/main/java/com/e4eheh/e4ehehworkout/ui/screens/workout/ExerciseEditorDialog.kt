@@ -100,45 +100,21 @@ fun ExerciseEditorDialog(
                         .testTag("exercise_name_input"),
                 )
 
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "DISCIPLINE",
-                        style = ArkhamTelemetryStyle,
-                        color = ArkhamColors.PhosphorGreenDim,
-                    )
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Discipline.entries.forEach { discipline ->
-                            ArkhamHudChip(
-                                label = discipline.displayName,
-                                selected = state.discipline == discipline,
-                                onClick = { onDisciplineChange(discipline) },
-                            )
-                        }
-                    }
-                }
+                ChipSelectorSection(
+                    title = "DISCIPLINE",
+                    options = Discipline.entries,
+                    selected = state.discipline,
+                    labelOf = { it.displayName },
+                    onSelect = onDisciplineChange,
+                )
 
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "TRACKING MODE",
-                        style = ArkhamTelemetryStyle,
-                        color = ArkhamColors.PhosphorGreenDim,
-                    )
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        TrackingMode.entries.forEach { mode ->
-                            ArkhamHudChip(
-                                label = mode.displayName,
-                                selected = state.trackingMode == mode,
-                                onClick = { onTrackingModeChange(mode) },
-                            )
-                        }
-                    }
-                }
+                ChipSelectorSection(
+                    title = "TRACKING MODE",
+                    options = TrackingMode.entries,
+                    selected = state.trackingMode,
+                    labelOf = { it.displayName },
+                    onSelect = onTrackingModeChange,
+                )
 
                 OutlinedTextField(
                     value = state.defaultNotes,
@@ -168,6 +144,36 @@ fun ExerciseEditorDialog(
                         modifier = Modifier.weight(1f),
                     )
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun <T> ChipSelectorSection(
+    title: String,
+    options: List<T>,
+    selected: T,
+    labelOf: (T) -> String,
+    onSelect: (T) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = title,
+            style = ArkhamTelemetryStyle,
+            color = ArkhamColors.PhosphorGreenDim,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            options.forEach { option ->
+                ArkhamHudChip(
+                    label = labelOf(option),
+                    selected = selected == option,
+                    onClick = { onSelect(option) },
+                )
             }
         }
     }

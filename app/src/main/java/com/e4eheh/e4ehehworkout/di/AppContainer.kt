@@ -10,7 +10,7 @@ import java.time.Clock
 /** Manual dependency graph for production and in-memory test environments. */
 class AppContainer private constructor(
     val clock: Clock,
-    val database: WorkoutDatabase,
+    private val database: WorkoutDatabase,
     val exerciseRepository: ExerciseRepository,
 ) {
     fun close() {

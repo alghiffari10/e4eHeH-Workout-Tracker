@@ -122,7 +122,11 @@ class ExerciseLibraryViewModel(
                 val target = pendingDeleteExercise.value ?: return
                 pendingDeleteExercise.value = null
                 viewModelScope.launch {
-                    exerciseRepository.softDelete(target.id)
+                    try {
+                        exerciseRepository.softDelete(target.id)
+                    } catch (_: NoSuchElementException) {
+                        // Exercise was already removed concurrently.
+                    }
                 }
             }
         }
@@ -149,7 +153,11 @@ class ExerciseLibraryViewModel(
             if (editingId == null) {
                 exerciseRepository.create(input)
             } else {
-                exerciseRepository.update(editingId, input)
+                try {
+                    exerciseRepository.update(editingId, input)
+                } catch (_: NoSuchElementException) {
+                    // Exercise was deleted before the edit saved.
+                }
             }
         }
     }

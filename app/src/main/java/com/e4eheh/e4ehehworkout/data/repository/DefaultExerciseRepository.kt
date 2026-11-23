@@ -8,6 +8,8 @@ import com.e4eheh.e4ehehworkout.domain.model.ExerciseInput
 import com.e4eheh.e4ehehworkout.domain.model.SyncStatus
 import com.e4eheh.e4ehehworkout.domain.repository.ExerciseRepository
 import java.time.Clock
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -16,7 +18,6 @@ import kotlinx.coroutines.flow.map
 class DefaultExerciseRepository(
     private val exerciseDao: ExerciseDao,
     private val clock: Clock,
-    private val idGenerator: () -> String = { UUID.randomUUID().toString() },
 ) : ExerciseRepository {
     override fun observeActiveExercises(): Flow<List<Exercise>> =
         exerciseDao.observeActive().map { entities -> entities.map { it.toDomain() } }
@@ -29,9 +30,9 @@ class DefaultExerciseRepository(
 
     override suspend fun create(input: ExerciseInput): Exercise {
         val (trimmedName, normalizedNotes) = normalizeInput(input)
-        val now = clock.instant()
+        val now = nowMillis()
         val exercise = Exercise(
-            id = idGenerator(),
+            id = UUID.randomUUID().toString(),
             name = trimmedName,
             discipline = input.discipline,
             trackingMode = input.trackingMode,
@@ -55,7 +56,7 @@ class DefaultExerciseRepository(
             discipline = input.discipline,
             trackingMode = input.trackingMode,
             defaultNotes = normalizedNotes,
-            updatedAt = clock.instant(),
+            updatedAt = nowMillis(),
             syncStatus = SyncStatus.PENDING,
         )
         exerciseDao.upsert(updated.toEntity())
@@ -67,7 +68,7 @@ class DefaultExerciseRepository(
             ?: throw NoSuchElementException("Exercise not found for id=$id")
         if (existing.deletedAt != null) return existing
 
-        val now = clock.instant()
+        val now = nowMillis()
         val deleted = existing.copy(
             updatedAt = now,
             deletedAt = now,
@@ -76,6 +77,8 @@ class DefaultExerciseRepository(
         exerciseDao.upsert(deleted.toEntity())
         return deleted
     }
+
+    private fun nowMillis(): Instant = clock.instant().truncatedTo(ChronoUnit.MILLIS)
 
     private fun normalizeInput(input: ExerciseInput): Pair<String, String?> {
         val trimmedName = input.name.trim()

@@ -1,5 +1,6 @@
 package com.e4eheh.e4ehehworkout.ui.screens.workout
 
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -13,6 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +31,7 @@ import com.e4eheh.e4ehehworkout.ui.components.ArkhamIcons
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamPrimaryButton
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSectionHeader
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
+import com.e4eheh.e4ehehworkout.ui.theme.ArkhamMotion
 import java.util.Locale
 
 /** Workout tab housing the athlete's personal Exercise library. */
@@ -49,27 +53,33 @@ fun WorkoutScreen(
         )
 
         if (uiState.exercises.isEmpty()) {
-            ArkhamHudPanel(
-                modifier = Modifier.fillMaxWidth(),
-                highlighted = true,
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
             ) {
-                Text(
-                    text = "NO EXERCISES CATALOGED",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = ArkhamColors.MintWhite,
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "Build your personal movement catalog from scratch. Model each progression with its own Discipline and Tracking Mode.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = ArkhamColors.MintMuted,
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-                ArkhamPrimaryButton(
-                    text = "ADD FIRST EXERCISE",
-                    onClick = { onAction(ExerciseLibraryAction.OpenCreateDialog) },
+                ArkhamHudPanel(
                     modifier = Modifier.fillMaxWidth(),
-                )
+                    highlighted = true,
+                ) {
+                    Text(
+                        text = "NO EXERCISES CATALOGED",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = ArkhamColors.MintWhite,
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Build your personal movement catalog from scratch. Model each progression with its own Discipline and Tracking Mode.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = ArkhamColors.MintMuted,
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    ArkhamPrimaryButton(
+                        text = "ADD FIRST EXERCISE",
+                        onClick = { onAction(ExerciseLibraryAction.OpenCreateDialog) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
         } else {
             ArkhamPrimaryButton(
@@ -90,7 +100,11 @@ fun WorkoutScreen(
                         exercise = exercise,
                         onEditClick = { onAction(ExerciseLibraryAction.OpenEditDialog(exercise)) },
                         onDeleteClick = { onAction(ExerciseLibraryAction.RequestDelete(exercise)) },
-                        modifier = Modifier.animateItem(),
+                        modifier = Modifier.animateItem(
+                            fadeInSpec = tween(ArkhamMotion.TRANSITION_MS),
+                            fadeOutSpec = tween(ArkhamMotion.STATE_MS),
+                            placementSpec = tween(ArkhamMotion.TRANSITION_MS),
+                        ),
                     )
                 }
             }

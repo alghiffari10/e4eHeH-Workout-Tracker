@@ -11,7 +11,6 @@ object ArkhamColors {
 
     val PhosphorGreen = Color(0xFF00FF66)
     val PhosphorGreenDim = Color(0xFF00E676)
-    val PhosphorGlow = Color(0x3300FF66)
 
     val TerminalEmerald = Color(0xFF1A4D33)
     val TerminalEmeraldBright = Color(0xFF287A50)

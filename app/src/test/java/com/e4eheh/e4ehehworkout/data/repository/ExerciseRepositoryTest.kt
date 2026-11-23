@@ -134,7 +134,7 @@ class ExerciseRepositoryTest {
     @Test
     fun update_modifiesFields_preservesCreatedAt_advancesUpdatedAt_andTransitionsSyncedToPending() =
         runTest {
-            val id = "ex-101"
+            val id = "00000000-0000-4000-8000-000000000101"
             dao.upsert(
                 ExerciseEntity(
                     id = id,
@@ -176,7 +176,7 @@ class ExerciseRepositoryTest {
     @Test
     fun softDelete_setsTombstone_hidesFromActiveQueries_andTransitionsSyncedToPending() =
         runTest {
-            val id = "ex-202"
+            val id = "00000000-0000-4000-8000-000000000202"
             dao.upsert(
                 ExerciseEntity(
                     id = id,
@@ -262,5 +262,23 @@ class ExerciseRepositoryTest {
         assertEquals(firstDelete, secondDelete)
         assertEquals(initialInstant.plus(Duration.ofMinutes(5)), secondDelete.deletedAt)
         assertEquals(initialInstant.plus(Duration.ofMinutes(5)), secondDelete.updatedAt)
+    }
+
+    @Test
+    fun create_truncatesSubMillisecondTimestamps_toMatchPersistedPrecision() = runTest {
+        clock.setInstant(Instant.parse("2026-11-23T08:00:00.123456789Z"))
+
+        val created = repository.create(
+            ExerciseInput(
+                name = "Dips",
+                discipline = Discipline.CALISTHENICS,
+                trackingMode = TrackingMode.REPS_AND_LOAD,
+            )
+        )
+
+        val expectedMillis = Instant.parse("2026-11-23T08:00:00.123Z")
+        assertEquals(expectedMillis, created.createdAt)
+        assertEquals(expectedMillis, created.updatedAt)
+        assertEquals(created, repository.getById(created.id))
     }
 }
