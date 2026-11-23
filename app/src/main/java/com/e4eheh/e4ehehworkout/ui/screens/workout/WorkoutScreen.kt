@@ -1,9 +1,7 @@
 package com.e4eheh.e4ehehworkout.ui.screens.workout
 
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -17,18 +15,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.e4eheh.e4ehehworkout.domain.model.Exercise
 import com.e4eheh.e4ehehworkout.domain.model.Routine
@@ -37,10 +32,9 @@ import com.e4eheh.e4ehehworkout.ui.components.ArkhamHudPanel
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamIcons
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamPrimaryButton
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSectionHeader
-import com.e4eheh.e4ehehworkout.ui.components.arkhamSelectableColors
+import com.e4eheh.e4ehehworkout.ui.components.ArkhamSegmentTab
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamMotion
-import com.e4eheh.e4ehehworkout.ui.theme.ArkhamShapes
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryStyle
 import java.util.Locale
 
@@ -164,7 +158,7 @@ private fun WorkoutSectionSwitcher(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        WorkoutSegmentTab(
+        ArkhamSegmentTab(
             label = "ROUTINES",
             selected = selected == WorkoutTabSection.ROUTINES,
             onClick = { onSelect(WorkoutTabSection.ROUTINES) },
@@ -172,7 +166,7 @@ private fun WorkoutSectionSwitcher(
                 .weight(1f)
                 .testTag("workout_segment_routines"),
         )
-        WorkoutSegmentTab(
+        ArkhamSegmentTab(
             label = "EXERCISES",
             selected = selected == WorkoutTabSection.EXERCISES,
             onClick = { onSelect(WorkoutTabSection.EXERCISES) },
@@ -180,42 +174,6 @@ private fun WorkoutSectionSwitcher(
                 .weight(1f)
                 .testTag("workout_segment_exercises"),
         )
-    }
-}
-
-@Composable
-private fun WorkoutSegmentTab(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val (borderColor, containerColor, textColor) = arkhamSelectableColors(
-        selected = selected,
-        selectedContainerAlpha = 0.5f,
-        labelPrefix = "segment",
-    )
-
-    Surface(
-        modifier = modifier.selectable(
-            selected = selected,
-            onClick = onClick,
-            role = Role.Tab,
-        ),
-        shape = ArkhamShapes.chip,
-        color = containerColor,
-        border = BorderStroke(1.dp, borderColor),
-    ) {
-        Box(
-            modifier = Modifier.padding(vertical = 8.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                color = textColor,
-            )
-        }
     }
 }
 

@@ -53,6 +53,7 @@ import com.e4eheh.e4ehehworkout.ui.screens.home.HomeViewModel
 import com.e4eheh.e4ehehworkout.ui.screens.profile.ProfileScreen
 import com.e4eheh.e4ehehworkout.ui.screens.profile.ProfileViewModel
 import com.e4eheh.e4ehehworkout.ui.screens.progress.ProgressScreen
+import com.e4eheh.e4ehehworkout.ui.screens.progress.ProgressViewModel
 import com.e4eheh.e4ehehworkout.ui.screens.session.ActiveSessionScreen
 import com.e4eheh.e4ehehworkout.ui.screens.session.ActiveSessionViewModel
 import com.e4eheh.e4ehehworkout.ui.screens.session.SessionEditorScreen
@@ -167,7 +168,17 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
                         )
                     }
                     composable(TopLevelTab.PROGRESS.route) {
-                        ProgressScreen()
+                        val viewModel: ProgressViewModel = viewModel(
+                            factory = ProgressViewModel.Factory(
+                                sessionRepository = appContainer.sessionRepository,
+                                clock = appContainer.clock,
+                            ),
+                        )
+                        val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                        ProgressScreen(
+                            uiState = uiState,
+                            onAction = viewModel::onAction,
+                        )
                     }
                     composable(TopLevelTab.PROFILE.route) {
                         val viewModel: ProfileViewModel = viewModel(

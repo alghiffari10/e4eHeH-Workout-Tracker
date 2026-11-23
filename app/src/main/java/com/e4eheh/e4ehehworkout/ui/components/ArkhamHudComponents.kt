@@ -194,6 +194,44 @@ fun ArkhamHudChip(
     }
 }
 
+/** Full-width selectable segmented tab button used across Workout and Progress switchers. */
+@Composable
+fun ArkhamSegmentTab(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    labelPrefix: String = "segment",
+) {
+    val (borderColor, containerColor, textColor) = arkhamSelectableColors(
+        selected = selected,
+        selectedContainerAlpha = 0.5f,
+        labelPrefix = labelPrefix,
+    )
+
+    Surface(
+        modifier = modifier.selectable(
+            selected = selected,
+            onClick = onClick,
+            role = Role.Tab,
+        ),
+        shape = ArkhamShapes.chip,
+        color = containerColor,
+        border = BorderStroke(1.dp, borderColor),
+    ) {
+        Box(
+            modifier = Modifier.padding(vertical = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                color = textColor,
+            )
+        }
+    }
+}
+
 /** Compact monospace HUD metadata badge. */
 @Composable
 fun ArkhamHudBadge(
