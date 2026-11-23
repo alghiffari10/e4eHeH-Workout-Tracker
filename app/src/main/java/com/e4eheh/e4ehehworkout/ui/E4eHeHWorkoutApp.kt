@@ -153,6 +153,7 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
                         WorkoutScreen(
                             uiState = uiState,
                             onAction = viewModel::onAction,
+                            onStartRoutineSession = appShellViewModel::startSessionFromRoutine,
                         )
                     }
                     composable(TopLevelTab.PROGRESS.route) {
@@ -186,6 +187,7 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
                                 exerciseRepository = appContainer.exerciseRepository,
                                 userPreferencesRepository = appContainer.userPreferencesRepository,
                                 clock = appContainer.clock,
+                                routineRepository = appContainer.routineRepository,
                             ),
                         )
                         val uiState by viewModel.uiState.collectAsStateWithLifecycle()

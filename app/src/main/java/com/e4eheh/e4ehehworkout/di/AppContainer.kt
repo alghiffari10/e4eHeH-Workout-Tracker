@@ -75,6 +75,8 @@ class AppContainer private constructor(
             sessionRepository = DefaultSessionRepository(
                 sessionDao = database.sessionDao(),
                 clock = clock,
+                routineDao = database.routineDao(),
+                exerciseDao = database.exerciseDao(),
             ),
             userPreferencesRepository = DefaultUserPreferencesRepository(
                 userPreferencesDao = database.userPreferencesDao(),

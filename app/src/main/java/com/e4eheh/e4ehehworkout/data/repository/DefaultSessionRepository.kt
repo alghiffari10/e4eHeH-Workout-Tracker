@@ -1,5 +1,7 @@
 package com.e4eheh.e4ehehworkout.data.repository
 
+import com.e4eheh.e4ehehworkout.data.local.ExerciseDao
+import com.e4eheh.e4ehehworkout.data.local.RoutineDao
 import com.e4eheh.e4ehehworkout.data.local.SessionDao
 import com.e4eheh.e4ehehworkout.data.local.SessionEntity
 import com.e4eheh.e4ehehworkout.data.local.SessionExerciseEntity
@@ -12,6 +14,7 @@ import com.e4eheh.e4ehehworkout.domain.model.Session
 import com.e4eheh.e4ehehworkout.domain.model.SessionDraftInput
 import com.e4eheh.e4ehehworkout.domain.model.SessionExercise
 import com.e4eheh.e4ehehworkout.domain.model.SessionExerciseDraftInput
+import com.e4eheh.e4ehehworkout.domain.model.SessionSet
 import com.e4eheh.e4ehehworkout.domain.model.SessionSetDraftInput
 import com.e4eheh.e4ehehworkout.domain.model.SessionStatus
 import com.e4eheh.e4ehehworkout.domain.model.SyncStatus
@@ -31,6 +34,8 @@ import kotlinx.coroutines.sync.withLock
 class DefaultSessionRepository(
     private val sessionDao: SessionDao,
     private val clock: Clock,
+    private val routineDao: RoutineDao? = null,
+    private val exerciseDao: ExerciseDao? = null,
 ) : SessionRepository {
     private val writeMutex = Mutex()
 
@@ -73,6 +78,102 @@ class DefaultSessionRepository(
         sessionDao.upsertSession(sessionEntity)
         sessionEntity.toDomain(emptyList())
     }
+
+    override suspend fun createLiveSessionFromRoutine(routineId: String): Session =
+        writeMutex.withLock {
+            val resolvedRoutineDao = routineDao
+            val resolvedExerciseDao = exerciseDao
+            check(resolvedRoutineDao != null && resolvedExerciseDao != null) {
+                "RoutineDao and ExerciseDao are required to launch a Session from a Routine."
+            }
+
+            val routineRecord = resolvedRoutineDao.getWithExercisesById(routineId)
+                ?.takeIf { it.routine.deletedAt == null }
+                ?: throw NoSuchElementException("Active Routine not found for id=$routineId")
+
+            val activeRoutineExercises = routineRecord.exercises
+                .filter { it.deletedAt == null }
+                .sortedWith(compareBy({ it.sortOrder }, { it.createdAt }))
+
+            val resolvedExercises = activeRoutineExercises.map { entry ->
+                val exerciseEntity = resolvedExerciseDao.getById(entry.exerciseId)
+                    ?: throw NoSuchElementException("Exercise not found for id=${entry.exerciseId}")
+                entry to exerciseEntity
+            }
+
+            val nowEpoch = nowMillis().toEpochMilli()
+            val sessionId = UUID.randomUUID().toString()
+            val sessionEntity = SessionEntity(
+                id = sessionId,
+                routineId = routineRecord.routine.id,
+                title = routineRecord.routine.name,
+                discipline = routineRecord.routine.discipline,
+                status = SessionStatus.IN_PROGRESS.name,
+                startedAt = nowEpoch,
+                completedAt = null,
+                durationSeconds = 0L,
+                notes = null,
+                createdAt = nowEpoch,
+                updatedAt = nowEpoch,
+                deletedAt = null,
+                syncStatus = SyncStatus.PENDING.name,
+            )
+
+            val exerciseEntities = ArrayList<SessionExerciseEntity>(resolvedExercises.size)
+            val setEntities = ArrayList<SessionSetEntity>()
+            val domainExercises = ArrayList<SessionExercise>(resolvedExercises.size)
+
+            resolvedExercises.forEachIndexed { exIndex, (routineEntry, exerciseEntity) ->
+                val sessionExerciseId = UUID.randomUUID().toString()
+                val sessionExerciseEntity = SessionExerciseEntity(
+                    id = sessionExerciseId,
+                    sessionId = sessionId,
+                    exerciseId = exerciseEntity.id,
+                    exerciseName = exerciseEntity.name,
+                    exerciseDiscipline = exerciseEntity.discipline,
+                    trackingMode = exerciseEntity.trackingMode,
+                    sortOrder = exIndex,
+                    notes = null,
+                    createdAt = nowEpoch,
+                    updatedAt = nowEpoch,
+                    deletedAt = null,
+                    syncStatus = SyncStatus.PENDING.name,
+                )
+                exerciseEntities += sessionExerciseEntity
+
+                val trackingMode = TrackingMode.valueOf(exerciseEntity.trackingMode)
+                val targetSetCount = routineEntry.defaultTargetSets ?: 0
+                val domainSets = ArrayList<SessionSet>(targetSetCount)
+                repeat(targetSetCount) { setIndex ->
+                    val setEntity = SessionSetEntity(
+                        id = UUID.randomUUID().toString(),
+                        sessionExerciseId = sessionExerciseId,
+                        sortOrder = setIndex,
+                        reps = null,
+                        loadKg = if (trackingMode == TrackingMode.REPS_AND_LOAD) 0.0 else null,
+                        durationSeconds = null,
+                        distanceKm = null,
+                        rounds = null,
+                        isCompleted = false,
+                        isWarmup = false,
+                        createdAt = nowEpoch,
+                        updatedAt = nowEpoch,
+                        deletedAt = null,
+                        syncStatus = SyncStatus.PENDING.name,
+                    )
+                    setEntities += setEntity
+                    domainSets += setEntity.toDomain()
+                }
+                domainExercises += sessionExerciseEntity.toDomain(domainSets)
+            }
+
+            sessionDao.upsertSessionGraph(
+                session = sessionEntity,
+                exercises = exerciseEntities,
+                sets = setEntities,
+            )
+            sessionEntity.toDomain(domainExercises)
+        }
 
     override suspend fun saveDraft(id: String, input: SessionDraftInput): Session =
         persistSessionUpdate(id = id, input = input, complete = false)

@@ -1,10 +1,15 @@
 package com.e4eheh.e4ehehworkout.data.repository
 
+import com.e4eheh.e4ehehworkout.data.local.InMemoryExerciseDao
+import com.e4eheh.e4ehehworkout.data.local.InMemoryRoutineDao
 import com.e4eheh.e4ehehworkout.data.local.InMemorySessionDao
 import com.e4eheh.e4ehehworkout.data.local.SessionEntity
 import com.e4eheh.e4ehehworkout.data.local.SessionExerciseEntity
 import com.e4eheh.e4ehehworkout.data.local.SessionSetEntity
 import com.e4eheh.e4ehehworkout.domain.model.Discipline
+import com.e4eheh.e4ehehworkout.domain.model.ExerciseInput
+import com.e4eheh.e4ehehworkout.domain.model.RoutineExerciseInput
+import com.e4eheh.e4ehehworkout.domain.model.RoutineInput
 import com.e4eheh.e4ehehworkout.domain.model.SessionDraftInput
 import com.e4eheh.e4ehehworkout.domain.model.SessionExerciseDraftInput
 import com.e4eheh.e4ehehworkout.domain.model.SessionSetDraftInput
@@ -28,7 +33,16 @@ class SessionRepositoryTest {
     private val initialInstant = Instant.parse("2026-11-23T08:00:00Z")
     private val clock = FakeClock(initialInstant)
     private val dao = InMemorySessionDao()
-    private val repository = DefaultSessionRepository(dao, clock)
+    private val routineDao = InMemoryRoutineDao()
+    private val exerciseDao = InMemoryExerciseDao()
+    private val routineRepository = DefaultRoutineRepository(routineDao, clock)
+    private val exerciseRepository = DefaultExerciseRepository(exerciseDao, clock)
+    private val repository = DefaultSessionRepository(
+        sessionDao = dao,
+        clock = clock,
+        routineDao = routineDao,
+        exerciseDao = exerciseDao,
+    )
 
     @Test
     fun createLiveBlankSession_generatesUuid_setsInProgressAndSyncMetadata() = runTest {
@@ -586,4 +600,115 @@ class SessionRepositoryTest {
             clock.advanceBy(Duration.ofMinutes(5))
             assertEquals(deleted, repository.softDelete(created.id))
         }
+
+    @Test
+    fun createLiveSessionFromRoutine_snapshotsRoutineAndTargetSets_andPreservesIndependenceAfterRoutineEditsAndDelete() =
+        runTest {
+            val pushup = exerciseRepository.create(
+                ExerciseInput("Archer Push-up", Discipline.CALISTHENICS, TrackingMode.REPS_AND_LOAD)
+            )
+            val lsit = exerciseRepository.create(
+                ExerciseInput("L-Sit", Discipline.CALISTHENICS, TrackingMode.HOLD_DURATION)
+            )
+            val finisher = exerciseRepository.create(
+                ExerciseInput("EMOM Finisher", Discipline.CONDITIONING, TrackingMode.CONDITIONING_ROUNDS)
+            )
+            val routine = routineRepository.create(
+                RoutineInput(
+                    name = "Calisthenics Push",
+                    discipline = Discipline.CALISTHENICS,
+                    exercises = listOf(
+                        RoutineExerciseInput(pushup.id, defaultTargetSets = 3),
+                        RoutineExerciseInput(lsit.id, defaultTargetSets = null),
+                        RoutineExerciseInput(finisher.id, defaultTargetSets = 2),
+                    ),
+                )
+            )
+
+            clock.advanceBy(Duration.ofMinutes(30))
+            val launchInstant = clock.instant()
+            val launched = repository.createLiveSessionFromRoutine(routine.id)
+
+            assertNotNull(UUID.fromString(launched.id))
+            assertEquals(routine.id, launched.routineId)
+            assertEquals("Calisthenics Push", launched.title)
+            assertEquals(Discipline.CALISTHENICS, launched.discipline)
+            assertEquals(SessionStatus.IN_PROGRESS, launched.status)
+            assertEquals(launchInstant, launched.startedAt)
+            assertNull(launched.completedAt)
+            assertEquals(SyncStatus.PENDING, launched.syncStatus)
+
+            assertEquals(3, launched.exercises.size)
+            val ex0 = launched.exercises[0]
+            assertEquals(pushup.id, ex0.exerciseId)
+            assertEquals("Archer Push-up", ex0.exerciseName)
+            assertEquals(Discipline.CALISTHENICS, ex0.exerciseDiscipline)
+            assertEquals(TrackingMode.REPS_AND_LOAD, ex0.trackingMode)
+            assertEquals(0, ex0.sortOrder)
+            assertEquals(3, ex0.sets.size)
+            assertTrue(ex0.sets.all { !it.isCompleted && !it.isWarmup && it.syncStatus == SyncStatus.PENDING })
+            assertTrue(ex0.sets.all { it.loadKg == 0.0 })
+            assertEquals(listOf(0, 1, 2), ex0.sets.map { it.sortOrder })
+
+            val ex1 = launched.exercises[1]
+            assertEquals(lsit.id, ex1.exerciseId)
+            assertEquals(1, ex1.sortOrder)
+            assertTrue(ex1.sets.isEmpty())
+
+            val ex2 = launched.exercises[2]
+            assertEquals(finisher.id, ex2.exerciseId)
+            assertEquals(Discipline.CONDITIONING, ex2.exerciseDiscipline)
+            assertEquals(TrackingMode.CONDITIONING_ROUNDS, ex2.trackingMode)
+            assertEquals(2, ex2.sortOrder)
+            assertEquals(2, ex2.sets.size)
+            assertTrue(ex2.sets.all { it.loadKg == null })
+
+            // Mutate and soft-delete the originating Routine & Exercise: Session snapshot remains intact
+            clock.advanceBy(Duration.ofMinutes(5))
+            routineRepository.update(
+                routine.id,
+                RoutineInput(
+                    name = "Mutated Routine",
+                    discipline = Discipline.CARDIO,
+                    exercises = listOf(RoutineExerciseInput(lsit.id, defaultTargetSets = 1)),
+                ),
+            )
+            exerciseRepository.update(
+                pushup.id,
+                ExerciseInput("One-Arm Push-up", Discipline.WEIGHT_LIFTING, TrackingMode.HOLD_DURATION),
+            )
+            routineRepository.softDelete(routine.id)
+
+            val reloadedInProgress = repository.getById(launched.id)!!
+            assertEquals(launched, reloadedInProgress)
+            assertEquals("Calisthenics Push", reloadedInProgress.title)
+            assertEquals("Archer Push-up", reloadedInProgress.exercises[0].exerciseName)
+            assertEquals(3, reloadedInProgress.exercises.size)
+        }
+
+    @Test(expected = NoSuchElementException::class)
+    fun createLiveSessionFromRoutine_missingRoutine_throwsNoSuchElementException() = runTest {
+        repository.createLiveSessionFromRoutine("missing-routine")
+    }
+
+    @Test(expected = NoSuchElementException::class)
+    fun createLiveSessionFromRoutine_deletedRoutine_throwsNoSuchElementException() = runTest {
+        val routine = routineRepository.create(
+            RoutineInput(name = "Deleted", discipline = Discipline.CALISTHENICS)
+        )
+        routineRepository.softDelete(routine.id)
+        repository.createLiveSessionFromRoutine(routine.id)
+    }
+
+    @Test(expected = NoSuchElementException::class)
+    fun createLiveSessionFromRoutine_missingExercise_throwsNoSuchElementException() = runTest {
+        val routine = routineRepository.create(
+            RoutineInput(
+                name = "Broken Routine",
+                discipline = Discipline.CALISTHENICS,
+                exercises = listOf(RoutineExerciseInput("missing-exercise", defaultTargetSets = 2)),
+            )
+        )
+        repository.createLiveSessionFromRoutine(routine.id)
+    }
 }

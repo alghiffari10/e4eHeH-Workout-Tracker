@@ -1,15 +1,19 @@
 package com.e4eheh.e4ehehworkout.ui.screens.session
 
 import com.e4eheh.e4ehehworkout.data.local.InMemoryExerciseDao
+import com.e4eheh.e4ehehworkout.data.local.InMemoryRoutineDao
 import com.e4eheh.e4ehehworkout.data.local.InMemorySessionDao
 import com.e4eheh.e4ehehworkout.data.local.InMemoryUserPreferencesDao
 import com.e4eheh.e4ehehworkout.data.repository.DefaultExerciseRepository
+import com.e4eheh.e4ehehworkout.data.repository.DefaultRoutineRepository
 import com.e4eheh.e4ehehworkout.data.repository.DefaultSessionRepository
 import com.e4eheh.e4ehehworkout.data.repository.DefaultUserPreferencesRepository
 import com.e4eheh.e4ehehworkout.domain.model.Discipline
 import com.e4eheh.e4ehehworkout.domain.model.DistanceUnit
 import com.e4eheh.e4ehehworkout.domain.model.Exercise
 import com.e4eheh.e4ehehworkout.domain.model.ExerciseInput
+import com.e4eheh.e4ehehworkout.domain.model.RoutineExerciseInput
+import com.e4eheh.e4ehehworkout.domain.model.RoutineInput
 import com.e4eheh.e4ehehworkout.domain.model.SessionStatus
 import com.e4eheh.e4ehehworkout.domain.model.SyncStatus
 import com.e4eheh.e4ehehworkout.domain.model.TrackingMode
@@ -40,8 +44,16 @@ import org.junit.Test
 class ActiveSessionViewModelTest {
     private val testDispatcher = UnconfinedTestDispatcher()
     private val clock = FakeClock()
-    private val sessionRepository = DefaultSessionRepository(InMemorySessionDao(), clock)
-    private val exerciseRepository = DefaultExerciseRepository(InMemoryExerciseDao(), clock)
+    private val exerciseDao = InMemoryExerciseDao()
+    private val routineDao = InMemoryRoutineDao()
+    private val exerciseRepository = DefaultExerciseRepository(exerciseDao, clock)
+    private val routineRepository = DefaultRoutineRepository(routineDao, clock)
+    private val sessionRepository = DefaultSessionRepository(
+        sessionDao = InMemorySessionDao(),
+        clock = clock,
+        routineDao = routineDao,
+        exerciseDao = exerciseDao,
+    )
     private val userPreferencesRepository = DefaultUserPreferencesRepository(
         InMemoryUserPreferencesDao(),
         clock,
@@ -63,6 +75,7 @@ class ActiveSessionViewModelTest {
         exerciseRepository = exerciseRepository,
         userPreferencesRepository = userPreferencesRepository,
         clock = clock,
+        routineRepository = routineRepository,
     )
 
     @Test
@@ -531,6 +544,239 @@ class ActiveSessionViewModelTest {
             advanceUntilIdle()
             assertTrue(viewModel.uiState.value.isCompleted)
             assertEquals(RestTimerStatus.IDLE, viewModel.uiState.value.restTimer.status)
+
+            collector.cancel()
+        }
+
+    @Test
+    fun routineLaunchedSession_withoutStructuralChanges_finishesImmediatelyWithoutPrompt() =
+        runTest(testDispatcher) {
+            val pushup = exerciseRepository.create(
+                ExerciseInput("Push-up", Discipline.CALISTHENICS, TrackingMode.REPS_AND_LOAD)
+            )
+            val lsit = exerciseRepository.create(
+                ExerciseInput("L-Sit", Discipline.CALISTHENICS, TrackingMode.HOLD_DURATION)
+            )
+            val routine = routineRepository.create(
+                RoutineInput(
+                    name = "Core & Push",
+                    discipline = Discipline.CALISTHENICS,
+                    exercises = listOf(
+                        RoutineExerciseInput(pushup.id, defaultTargetSets = 2),
+                        RoutineExerciseInput(lsit.id, defaultTargetSets = null),
+                    ),
+                )
+            )
+
+            val session = sessionRepository.createLiveSessionFromRoutine(routine.id)
+            val viewModel = createViewModel(session.id)
+            val collector = backgroundScope.launch { viewModel.uiState.collect {} }
+            advanceUntilIdle()
+
+            assertEquals(routine.id, viewModel.uiState.value.routineId)
+            assertEquals("Core & Push", viewModel.uiState.value.draft.title)
+            assertEquals(2, viewModel.uiState.value.draft.exercises[0].sets.size)
+            assertEquals(0, viewModel.uiState.value.draft.exercises[1].sets.size)
+
+            // Log measurements, warm-up toggle, and notes without changing exercise structure or set counts
+            viewModel.onAction(ActiveSessionAction.UpdateNotes("Solid session"))
+            viewModel.onAction(ActiveSessionAction.UpdateExerciseNotes(0, "Paused bottom"))
+            viewModel.onAction(ActiveSessionAction.ToggleSetWarmup(0, 0))
+            viewModel.onAction(ActiveSessionAction.UpdateSetReps(0, 0, "10"))
+            viewModel.onAction(ActiveSessionAction.UpdateSetReps(0, 1, "12"))
+            viewModel.onAction(ActiveSessionAction.ToggleSetCompleted(0, 1))
+            advanceUntilIdle()
+
+            viewModel.onAction(ActiveSessionAction.FinishSession)
+            advanceUntilIdle()
+
+            assertFalse(viewModel.uiState.value.showUpdateRoutinePrompt)
+            assertTrue(viewModel.uiState.value.isCompleted)
+            assertEquals(routine, routineRepository.getById(routine.id))
+
+            collector.cancel()
+        }
+
+    @Test
+    fun routineLaunchedSession_reorderSwapAndSetChange_promptsAndConfirmUpdatesRoutineWithPendingSync() =
+        runTest(testDispatcher) {
+            val pullup = exerciseRepository.create(
+                ExerciseInput("Pull-up", Discipline.CALISTHENICS, TrackingMode.REPS_AND_LOAD)
+            )
+            val lsit = exerciseRepository.create(
+                ExerciseInput("L-Sit", Discipline.CALISTHENICS, TrackingMode.HOLD_DURATION)
+            )
+            val dip = exerciseRepository.create(
+                ExerciseInput("Dip", Discipline.CALISTHENICS, TrackingMode.REPS_AND_LOAD)
+            )
+            val routine = routineRepository.create(
+                RoutineInput(
+                    name = "Upper Mix",
+                    discipline = Discipline.CALISTHENICS,
+                    exercises = listOf(
+                        RoutineExerciseInput(pullup.id, defaultTargetSets = 2),
+                        RoutineExerciseInput(lsit.id, defaultTargetSets = 1),
+                    ),
+                )
+            )
+            val originalPullupEntryId = routine.exercises[0].id
+            val originalLsitEntryId = routine.exercises[1].id
+
+            val session = sessionRepository.createLiveSessionFromRoutine(routine.id)
+            val viewModel = createViewModel(session.id)
+            val collector = backgroundScope.launch { viewModel.uiState.collect {} }
+            advanceUntilIdle()
+
+            // Reorder: move Pull-up down -> [L-Sit, Pull-up]
+            viewModel.onAction(ActiveSessionAction.MoveExerciseDown(0))
+            assertEquals(
+                listOf(lsit.id, pullup.id),
+                viewModel.uiState.value.draft.exercises.map { it.exerciseId },
+            )
+            // Move back up and down again to verify both directions
+            viewModel.onAction(ActiveSessionAction.MoveExerciseUp(1))
+            viewModel.onAction(ActiveSessionAction.MoveExerciseDown(0))
+
+            // Add notes on slot 0 (L-Sit), then swap slot 0 to Dip (preserving 1 fresh blank set & clearing notes)
+            viewModel.onAction(ActiveSessionAction.UpdateExerciseNotes(0, "Old L-Sit note"))
+            viewModel.onAction(ActiveSessionAction.OpenSwapExercisePicker(0))
+            assertEquals(0, viewModel.uiState.value.swappingExerciseIndex)
+            assertTrue(viewModel.uiState.value.showExercisePicker)
+            viewModel.onAction(ActiveSessionAction.AddExistingExercise(dip.id))
+
+            val afterSwap = viewModel.uiState.value
+            assertFalse(afterSwap.showExercisePicker)
+            assertNull(afterSwap.swappingExerciseIndex)
+            assertEquals(listOf(dip.id, pullup.id), afterSwap.draft.exercises.map { it.exerciseId })
+            assertEquals("", afterSwap.draft.exercises[0].notes)
+            assertEquals(1, afterSwap.draft.exercises[0].sets.size)
+
+            // Adjust Pull-up (now index 1) from 2 sets to 3 sets
+            viewModel.onAction(ActiveSessionAction.AddSet(1))
+            advanceUntilIdle()
+
+            // Attempt finish -> prompt shown, session still IN_PROGRESS
+            clock.advanceBy(Duration.ofMinutes(20))
+            viewModel.onAction(ActiveSessionAction.FinishSession)
+            advanceUntilIdle()
+
+            val prompted = viewModel.uiState.value
+            assertTrue(prompted.showUpdateRoutinePrompt)
+            assertEquals("Upper Mix", prompted.originatingRoutineName)
+            assertFalse(prompted.isCompleted)
+            assertFalse(prompted.isEditable)
+
+            // Dismiss prompt keeps session IN_PROGRESS and editable
+            viewModel.onAction(ActiveSessionAction.DismissRoutineUpdatePrompt)
+            assertFalse(viewModel.uiState.value.showUpdateRoutinePrompt)
+            assertTrue(viewModel.uiState.value.isEditable)
+
+            // Re-trigger finish and confirm Routine update
+            viewModel.onAction(ActiveSessionAction.FinishSession)
+            advanceUntilIdle()
+            assertTrue(viewModel.uiState.value.showUpdateRoutinePrompt)
+
+            viewModel.onAction(ActiveSessionAction.ConfirmFinishAndUpdateRoutine)
+            advanceUntilIdle()
+
+            val finishedState = viewModel.uiState.value
+            assertFalse(finishedState.showUpdateRoutinePrompt)
+            assertTrue(finishedState.isCompleted)
+
+            val updatedRoutine = routineRepository.getById(routine.id)!!
+            assertEquals(SyncStatus.PENDING, updatedRoutine.syncStatus)
+            assertEquals(listOf(dip.id, pullup.id), updatedRoutine.exercises.map { it.exerciseId })
+            assertEquals(listOf(1, 3), updatedRoutine.exercises.map { it.defaultTargetSets })
+            assertEquals(originalPullupEntryId, updatedRoutine.exercises[1].id)
+
+            val routineWithDeleted = routineRepository.getById(routine.id, includeDeleted = true)!!
+            val removedLsit = routineWithDeleted.exercises.single { it.id == originalLsitEntryId }
+            assertNotNull(removedLsit.deletedAt)
+            assertEquals(SyncStatus.PENDING, removedLsit.syncStatus)
+
+            val completedSession = sessionRepository.getById(session.id)!!
+            assertEquals(SessionStatus.COMPLETED, completedSession.status)
+            assertEquals(listOf(dip.id, pullup.id), completedSession.exercises.map { it.exerciseId })
+
+            collector.cancel()
+        }
+
+    @Test
+    fun routineLaunchedSession_declineRoutineUpdate_completesSessionAndLeavesRoutineUntouched() =
+        runTest(testDispatcher) {
+            val pushup = exerciseRepository.create(
+                ExerciseInput("Push-up", Discipline.CALISTHENICS, TrackingMode.REPS_AND_LOAD)
+            )
+            val dip = exerciseRepository.create(
+                ExerciseInput("Dip", Discipline.CALISTHENICS, TrackingMode.REPS_AND_LOAD)
+            )
+            val routine = routineRepository.create(
+                RoutineInput(
+                    name = "Push Base",
+                    discipline = Discipline.CALISTHENICS,
+                    exercises = listOf(RoutineExerciseInput(pushup.id, defaultTargetSets = 3)),
+                )
+            )
+
+            val session = sessionRepository.createLiveSessionFromRoutine(routine.id)
+            val viewModel = createViewModel(session.id)
+            val collector = backgroundScope.launch { viewModel.uiState.collect {} }
+            advanceUntilIdle()
+
+            // Add Dip inline/via picker and remove a set from Push-up
+            viewModel.onAction(ActiveSessionAction.OpenExercisePicker)
+            viewModel.onAction(ActiveSessionAction.AddExistingExercise(dip.id))
+            viewModel.onAction(ActiveSessionAction.RemoveSet(0, 2))
+            advanceUntilIdle()
+
+            clock.advanceBy(Duration.ofMinutes(15))
+            viewModel.onAction(ActiveSessionAction.FinishSession)
+            advanceUntilIdle()
+            assertTrue(viewModel.uiState.value.showUpdateRoutinePrompt)
+
+            viewModel.onAction(ActiveSessionAction.DeclineRoutineUpdateAndFinish)
+            advanceUntilIdle()
+
+            assertFalse(viewModel.uiState.value.showUpdateRoutinePrompt)
+            assertTrue(viewModel.uiState.value.isCompleted)
+            assertEquals(routine, routineRepository.getById(routine.id))
+
+            val completedSession = sessionRepository.getById(session.id)!!
+            assertEquals(SessionStatus.COMPLETED, completedSession.status)
+            assertEquals(listOf(pushup.id, dip.id), completedSession.exercises.map { it.exerciseId })
+            assertEquals(listOf(2, 1), completedSession.exercises.map { it.sets.size })
+
+            collector.cancel()
+        }
+
+    @Test
+    fun routineLaunchedSession_deletedOriginatingRoutine_finishesWithoutPrompt() =
+        runTest(testDispatcher) {
+            val pushup = exerciseRepository.create(
+                ExerciseInput("Push-up", Discipline.CALISTHENICS, TrackingMode.REPS_AND_LOAD)
+            )
+            val routine = routineRepository.create(
+                RoutineInput(
+                    name = "Ephemeral Routine",
+                    discipline = Discipline.CALISTHENICS,
+                    exercises = listOf(RoutineExerciseInput(pushup.id, defaultTargetSets = 2)),
+                )
+            )
+
+            val session = sessionRepository.createLiveSessionFromRoutine(routine.id)
+            val viewModel = createViewModel(session.id)
+            val collector = backgroundScope.launch { viewModel.uiState.collect {} }
+            advanceUntilIdle()
+
+            routineRepository.softDelete(routine.id)
+            viewModel.onAction(ActiveSessionAction.AddSet(0))
+            advanceUntilIdle()
+
+            viewModel.onAction(ActiveSessionAction.FinishSession)
+            advanceUntilIdle()
+
+            assertFalse(viewModel.uiState.value.showUpdateRoutinePrompt)
+            assertTrue(viewModel.uiState.value.isCompleted)
 
             collector.cancel()
         }

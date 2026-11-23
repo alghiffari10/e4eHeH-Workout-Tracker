@@ -115,6 +115,7 @@ fun ArkhamExercisePickerView(
     onInlineTrackingModeChange: (TrackingMode) -> Unit,
     onSaveInlineExercise: () -> Unit,
     modifier: Modifier = Modifier,
+    headerTitle: String = "ADD EXERCISE",
 ) {
     val canNavigateBack = inlineExercise?.isSaving != true
     val handleBack = {
@@ -134,7 +135,7 @@ fun ArkhamExercisePickerView(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         ArkhamTopHeader(
-            title = "ADD EXERCISE",
+            title = headerTitle,
             backTestTag = "picker_back_button",
             onBack = handleBack,
             backEnabled = canNavigateBack,

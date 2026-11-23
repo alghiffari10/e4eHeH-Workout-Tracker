@@ -7,6 +7,10 @@ import com.e4eheh.e4ehehworkout.domain.model.Discipline
 import com.e4eheh.e4ehehworkout.domain.model.DistanceUnit
 import com.e4eheh.e4ehehworkout.domain.model.Exercise
 import com.e4eheh.e4ehehworkout.domain.model.ExerciseInput
+import com.e4eheh.e4ehehworkout.domain.model.Routine
+import com.e4eheh.e4ehehworkout.domain.model.RoutineExercise
+import com.e4eheh.e4ehehworkout.domain.model.RoutineExerciseInput
+import com.e4eheh.e4ehehworkout.domain.model.RoutineInput
 import com.e4eheh.e4ehehworkout.domain.model.Session
 import com.e4eheh.e4ehehworkout.domain.model.SessionDraftInput
 import com.e4eheh.e4ehehworkout.domain.model.SessionExercise
@@ -18,6 +22,7 @@ import com.e4eheh.e4ehehworkout.domain.model.TrackingMode
 import com.e4eheh.e4ehehworkout.domain.model.UserPreferences
 import com.e4eheh.e4ehehworkout.domain.model.WeightUnit
 import com.e4eheh.e4ehehworkout.domain.repository.ExerciseRepository
+import com.e4eheh.e4ehehworkout.domain.repository.RoutineRepository
 import com.e4eheh.e4ehehworkout.domain.repository.SessionRepository
 import com.e4eheh.e4ehehworkout.domain.repository.UserPreferencesRepository
 import com.e4eheh.e4ehehworkout.domain.timer.RestTimerController
@@ -129,6 +134,9 @@ data class ActiveSessionExerciseDraft(
         notes = notes,
         sets = sets.map { it.toDraftInput(trackingMode) },
     )
+
+    fun targetSetCountForRoutine(): Int? =
+        sets.size.takeIf { it > 0 }?.coerceAtMost(RoutineExercise.MAX_DEFAULT_TARGET_SETS)
 }
 
 /** Mutable in-progress Session draft holding raw input text alongside canonical metric values. */
@@ -149,6 +157,33 @@ data class ActiveSessionDraft(
             sets = listOf(ActiveSessionSetDraft()),
         )
         return copy(exercises = exercises + entry)
+    }
+
+    fun moveExercise(exerciseIndex: Int, delta: Int): ActiveSessionDraft {
+        val targetIndex = exerciseIndex + delta
+        if (exerciseIndex !in exercises.indices || targetIndex !in exercises.indices) return this
+        val mutable = exercises.toMutableList()
+        val moved = mutable[exerciseIndex]
+        mutable[exerciseIndex] = mutable[targetIndex]
+        mutable[targetIndex] = moved
+        return copy(exercises = mutable)
+    }
+
+    fun swapExercise(exerciseIndex: Int, newExercise: Exercise): ActiveSessionDraft {
+        if (exerciseIndex !in exercises.indices) return this
+        val existing = exercises[exerciseIndex]
+        if (existing.exerciseId == newExercise.id) return this
+        val replacement = existing.copy(
+            exerciseId = newExercise.id,
+            exerciseName = newExercise.name,
+            exerciseDiscipline = newExercise.discipline,
+            trackingMode = newExercise.trackingMode,
+            notes = "",
+            sets = List(existing.sets.size) { ActiveSessionSetDraft() },
+        )
+        val mutable = exercises.toMutableList()
+        mutable[exerciseIndex] = replacement
+        return copy(exercises = mutable)
     }
 
     fun removeExercise(exerciseIndex: Int): ActiveSessionDraft {
@@ -214,6 +249,7 @@ data class ActiveSessionDraft(
 /** Combined UI state for the full-screen active Session logger. */
 data class ActiveSessionUiState(
     val sessionId: String = "",
+    val routineId: String? = null,
     val isLoaded: Boolean = false,
     val isMissing: Boolean = false,
     val isCompleted: Boolean = false,
@@ -227,11 +263,14 @@ data class ActiveSessionUiState(
     val draft: ActiveSessionDraft = ActiveSessionDraft(),
     val availableExercises: List<Exercise> = emptyList(),
     val showExercisePicker: Boolean = false,
+    val swappingExerciseIndex: Int? = null,
     val pickerDisciplineFilter: Discipline? = null,
     val inlineExercise: InlineExerciseDraft? = null,
+    val showUpdateRoutinePrompt: Boolean = false,
+    val originatingRoutineName: String? = null,
 ) {
     val isEditable: Boolean
-        get() = isLoaded && !isMissing && !isCompleted && !isFinishing
+        get() = isLoaded && !isMissing && !isCompleted && !isFinishing && !showUpdateRoutinePrompt
 }
 
 /** User actions dispatched from the active Session logger and inline Exercise picker. */
@@ -241,6 +280,7 @@ sealed interface ActiveSessionAction {
     data class UpdateNotes(val notes: String) : ActiveSessionAction
 
     data object OpenExercisePicker : ActiveSessionAction
+    data class OpenSwapExercisePicker(val exerciseIndex: Int) : ActiveSessionAction
     data object CloseExercisePicker : ActiveSessionAction
     data class SelectPickerDisciplineFilter(val discipline: Discipline?) : ActiveSessionAction
     data class AddExistingExercise(val exerciseId: String) : ActiveSessionAction
@@ -252,6 +292,8 @@ sealed interface ActiveSessionAction {
     data class UpdateInlineExerciseTrackingMode(val trackingMode: TrackingMode) : ActiveSessionAction
     data object SaveInlineExercise : ActiveSessionAction
 
+    data class MoveExerciseUp(val exerciseIndex: Int) : ActiveSessionAction
+    data class MoveExerciseDown(val exerciseIndex: Int) : ActiveSessionAction
     data class RemoveExercise(val exerciseIndex: Int) : ActiveSessionAction
     data class UpdateExerciseNotes(val exerciseIndex: Int, val notes: String) : ActiveSessionAction
     data class AddSet(val exerciseIndex: Int) : ActiveSessionAction
@@ -270,6 +312,9 @@ sealed interface ActiveSessionAction {
     data class AdjustRestTimer(val deltaSeconds: Int) : ActiveSessionAction
     data object SkipRestTimer : ActiveSessionAction
     data object FinishSession : ActiveSessionAction
+    data object ConfirmFinishAndUpdateRoutine : ActiveSessionAction
+    data object DeclineRoutineUpdateAndFinish : ActiveSessionAction
+    data object DismissRoutineUpdatePrompt : ActiveSessionAction
 }
 
 /** Coordinates live Session logging, immediate IN_PROGRESS auto-save, unit conversion, and completion. */
@@ -279,6 +324,7 @@ class ActiveSessionViewModel(
     private val exerciseRepository: ExerciseRepository,
     private val userPreferencesRepository: UserPreferencesRepository,
     private val clock: Clock,
+    private val routineRepository: RoutineRepository? = null,
 ) : ViewModel() {
     private val persistMutex = Mutex()
     private var lastPersistedInput: SessionDraftInput? = null
@@ -347,6 +393,20 @@ class ActiveSessionViewModel(
                 internalState.update {
                     it.copy(
                         showExercisePicker = true,
+                        swappingExerciseIndex = null,
+                        pickerDisciplineFilter = null,
+                        inlineExercise = null,
+                    )
+                }
+            }
+
+            is ActiveSessionAction.OpenSwapExercisePicker -> {
+                val state = internalState.value
+                if (!state.isEditable || action.exerciseIndex !in state.draft.exercises.indices) return
+                internalState.update {
+                    it.copy(
+                        showExercisePicker = true,
+                        swappingExerciseIndex = action.exerciseIndex,
                         pickerDisciplineFilter = null,
                         inlineExercise = null,
                     )
@@ -358,7 +418,11 @@ class ActiveSessionViewModel(
                     if (state.inlineExercise?.isSaving == true) {
                         state
                     } else {
-                        state.copy(showExercisePicker = false, inlineExercise = null)
+                        state.copy(
+                            showExercisePicker = false,
+                            swappingExerciseIndex = null,
+                            inlineExercise = null,
+                        )
                     }
                 }
             }
@@ -371,13 +435,7 @@ class ActiveSessionViewModel(
                 if (!internalState.value.isEditable) return
                 val exercise = uiState.value.availableExercises.firstOrNull { it.id == action.exerciseId }
                     ?: return
-                mutateStateAndAutoSave { state ->
-                    state.copy(
-                        draft = state.draft.addExercise(exercise),
-                        showExercisePicker = false,
-                        inlineExercise = null,
-                    )
-                }
+                mutateStateAndAutoSave { state -> applyPickedExercise(state, exercise) }
             }
 
             ActiveSessionAction.OpenInlineExerciseCreator -> {
@@ -414,6 +472,12 @@ class ActiveSessionViewModel(
             }
 
             ActiveSessionAction.SaveInlineExercise -> saveInlineExercise()
+
+            is ActiveSessionAction.MoveExerciseUp ->
+                mutateDraftAndAutoSave { it.moveExercise(action.exerciseIndex, delta = -1) }
+
+            is ActiveSessionAction.MoveExerciseDown ->
+                mutateDraftAndAutoSave { it.moveExercise(action.exerciseIndex, delta = 1) }
 
             is ActiveSessionAction.RemoveExercise ->
                 mutateDraftAndAutoSave { it.removeExercise(action.exerciseIndex) }
@@ -518,7 +582,19 @@ class ActiveSessionViewModel(
                 restTimerController.skip(it)
             }
 
-            ActiveSessionAction.FinishSession -> finishSession()
+            ActiveSessionAction.FinishSession -> requestFinishSession()
+
+            ActiveSessionAction.ConfirmFinishAndUpdateRoutine ->
+                resolveRoutinePromptAndFinish(updateOriginatingRoutine = true)
+
+            ActiveSessionAction.DeclineRoutineUpdateAndFinish ->
+                resolveRoutinePromptAndFinish(updateOriginatingRoutine = false)
+
+            ActiveSessionAction.DismissRoutineUpdatePrompt -> {
+                internalState.update { state ->
+                    if (state.isFinishing) state else state.copy(showUpdateRoutinePrompt = false)
+                }
+            }
         }
     }
 
@@ -604,6 +680,24 @@ class ActiveSessionViewModel(
         }
     }
 
+    private fun applyPickedExercise(
+        state: ActiveSessionUiState,
+        exercise: Exercise,
+    ): ActiveSessionUiState {
+        val swapIndex = state.swappingExerciseIndex
+        val nextDraft = if (swapIndex != null) {
+            state.draft.swapExercise(swapIndex, exercise)
+        } else {
+            state.draft.addExercise(exercise)
+        }
+        return state.copy(
+            draft = nextDraft,
+            showExercisePicker = false,
+            swappingExerciseIndex = null,
+            inlineExercise = null,
+        )
+    }
+
     private fun saveInlineExercise() {
         if (!internalState.value.isEditable) return
         val inline = internalState.value.inlineExercise ?: return
@@ -634,12 +728,9 @@ class ActiveSessionViewModel(
             internalState.update { current ->
                 shouldAutoSave = current.isEditable
                 if (!current.isEditable) {
-                    current.copy(inlineExercise = null)
+                    current.copy(inlineExercise = null, swappingExerciseIndex = null)
                 } else {
-                    current.copy(
-                        draft = current.draft.addExercise(created),
-                        showExercisePicker = false,
-                        inlineExercise = null,
+                    applyPickedExercise(current, created).copy(
                         elapsedSeconds = computeElapsedSeconds(current.startedAt),
                     )
                 }
@@ -650,7 +741,7 @@ class ActiveSessionViewModel(
         }
     }
 
-    private fun finishSession() {
+    private fun requestFinishSession() {
         if (!internalState.value.isEditable) return
         internalState.update { it.copy(isFinishing = true) }
 
@@ -662,34 +753,119 @@ class ActiveSessionViewModel(
                         internalState.update { it.copy(isFinishing = false) }
                         return@withLock
                     }
-                    try {
-                        val completed = sessionRepository.completeSession(
-                            id = sessionId,
-                            input = snapshot.draft.toDraftInput(),
-                        )
-                        internalState.update { current ->
-                            current.copy(
-                                isFinishing = false,
-                                isCompleted = true,
-                                elapsedSeconds = completed.durationSeconds,
-                                restTimer = restTimerController.skip(current.restTimer),
-                                draft = completed.toDraft(current.weightUnit, current.distanceUnit),
-                            )
-                        }
-                    } catch (_: NoSuchElementException) {
-                        internalState.update { it.copy(isFinishing = false, isMissing = true) }
-                    } catch (_: IllegalStateException) {
-                        internalState.update { current ->
-                            current.copy(
-                                isFinishing = false,
-                                isCompleted = true,
-                                restTimer = restTimerController.skip(current.restTimer),
-                            )
+                    val routineId = snapshot.routineId
+                    if (routineId != null && routineRepository != null) {
+                        val routine = routineRepository.getById(routineId)
+                        if (routine != null && hasRoutineStructureChanged(routine, snapshot.draft)) {
+                            internalState.update {
+                                it.copy(
+                                    isFinishing = false,
+                                    showUpdateRoutinePrompt = true,
+                                    originatingRoutineName = routine.name,
+                                )
+                            }
+                            return@withLock
                         }
                     }
+                    completeSessionLocked(snapshot, updateOriginatingRoutine = false)
                 }
             }
         }
+    }
+
+    private fun resolveRoutinePromptAndFinish(updateOriginatingRoutine: Boolean) {
+        val current = internalState.value
+        if (!current.showUpdateRoutinePrompt || current.isFinishing) return
+        internalState.update { it.copy(isFinishing = true, showUpdateRoutinePrompt = false) }
+
+        viewModelScope.launch {
+            withContext(NonCancellable) {
+                persistMutex.withLock {
+                    val snapshot = internalState.value
+                    completeSessionLocked(snapshot, updateOriginatingRoutine = updateOriginatingRoutine)
+                }
+            }
+        }
+    }
+
+    private suspend fun completeSessionLocked(
+        snapshot: ActiveSessionUiState,
+        updateOriginatingRoutine: Boolean,
+    ) {
+        if (snapshot.isCompleted) {
+            internalState.update { it.copy(isFinishing = false, showUpdateRoutinePrompt = false) }
+            return
+        }
+        try {
+            if (updateOriginatingRoutine && snapshot.routineId != null && routineRepository != null) {
+                val routine = routineRepository.getById(snapshot.routineId)
+                if (routine != null) {
+                    try {
+                        routineRepository.update(
+                            id = routine.id,
+                            input = buildUpdatedRoutineInput(routine, snapshot.draft),
+                        )
+                    } catch (_: NoSuchElementException) {
+                        // Originating Routine was deleted concurrently; still complete Session.
+                    }
+                }
+            }
+            val completed = sessionRepository.completeSession(
+                id = sessionId,
+                input = snapshot.draft.toDraftInput(),
+            )
+            internalState.update { current ->
+                current.copy(
+                    isFinishing = false,
+                    isCompleted = true,
+                    showUpdateRoutinePrompt = false,
+                    elapsedSeconds = completed.durationSeconds,
+                    restTimer = restTimerController.skip(current.restTimer),
+                    draft = completed.toDraft(current.weightUnit, current.distanceUnit),
+                )
+            }
+        } catch (_: NoSuchElementException) {
+            internalState.update {
+                it.copy(isFinishing = false, isMissing = true, showUpdateRoutinePrompt = false)
+            }
+        } catch (_: IllegalStateException) {
+            internalState.update { current ->
+                current.copy(
+                    isFinishing = false,
+                    isCompleted = true,
+                    showUpdateRoutinePrompt = false,
+                    restTimer = restTimerController.skip(current.restTimer),
+                )
+            }
+        }
+    }
+
+    private fun hasRoutineStructureChanged(routine: Routine, draft: ActiveSessionDraft): Boolean {
+        val routineStructure = routine.exercises.map { it.exerciseId to it.defaultTargetSets }
+        val sessionStructure = draft.exercises.map {
+            it.exerciseId to it.targetSetCountForRoutine()
+        }
+        return routineStructure != sessionStructure
+    }
+
+    private fun buildUpdatedRoutineInput(routine: Routine, draft: ActiveSessionDraft): RoutineInput {
+        val existingIdsByExerciseId = HashMap<String, ArrayDeque<String>>()
+        routine.exercises.forEach { entry ->
+            existingIdsByExerciseId.getOrPut(entry.exerciseId) { ArrayDeque() }.addLast(entry.id)
+        }
+        val updatedExercises = draft.exercises.map { exerciseDraft ->
+            val reusedId = existingIdsByExerciseId[exerciseDraft.exerciseId]?.removeFirstOrNull()
+            RoutineExerciseInput(
+                exerciseId = exerciseDraft.exerciseId,
+                defaultTargetSets = exerciseDraft.targetSetCountForRoutine(),
+                id = reusedId,
+            )
+        }
+        return RoutineInput(
+            name = routine.name,
+            discipline = routine.discipline,
+            exercises = updatedExercises,
+        )
     }
 
     private fun hydrateState(
@@ -713,6 +889,7 @@ class ActiveSessionViewModel(
             computeElapsedSeconds(session.startedAt)
         }
         return current.copy(
+            routineId = session.routineId,
             isLoaded = true,
             isMissing = false,
             isCompleted = completed,
@@ -802,6 +979,7 @@ class ActiveSessionViewModel(
         private val exerciseRepository: ExerciseRepository,
         private val userPreferencesRepository: UserPreferencesRepository,
         private val clock: Clock,
+        private val routineRepository: RoutineRepository? = null,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -812,6 +990,7 @@ class ActiveSessionViewModel(
                 exerciseRepository = exerciseRepository,
                 userPreferencesRepository = userPreferencesRepository,
                 clock = clock,
+                routineRepository = routineRepository,
             ) as T
         }
     }

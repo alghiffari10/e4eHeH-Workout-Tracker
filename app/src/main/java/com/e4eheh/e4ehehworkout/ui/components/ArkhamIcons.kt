@@ -252,6 +252,28 @@ object ArkhamIcons {
         }
     }
 
+    val Swap: ImageVector by lazy {
+        tacticalIcon("ArkhamSwap") {
+            path(
+                stroke = SolidColor(Color.White),
+                strokeLineWidth = 1.8f,
+                strokeLineCap = StrokeCap.Square,
+                strokeLineJoin = StrokeJoin.Miter,
+            ) {
+                moveTo(4f, 8f)
+                lineTo(19f, 8f)
+                moveTo(15f, 4.5f)
+                lineTo(19f, 8f)
+                lineTo(15f, 11.5f)
+                moveTo(20f, 16f)
+                lineTo(5f, 16f)
+                moveTo(9f, 12.5f)
+                lineTo(5f, 16f)
+                lineTo(9f, 19.5f)
+            }
+        }
+    }
+
     private fun tacticalIcon(
         name: String,
         block: ImageVector.Builder.() -> Unit,

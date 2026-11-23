@@ -18,6 +18,8 @@ interface SessionRepository {
         title: String = "",
     ): Session
 
+    suspend fun createLiveSessionFromRoutine(routineId: String): Session
+
     suspend fun saveDraft(id: String, input: SessionDraftInput): Session
 
     suspend fun completeSession(id: String, input: SessionDraftInput): Session

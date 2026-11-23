@@ -1,11 +1,19 @@
 package com.e4eheh.e4ehehworkout.ui
 
+import com.e4eheh.e4ehehworkout.data.local.InMemoryExerciseDao
+import com.e4eheh.e4ehehworkout.data.local.InMemoryRoutineDao
 import com.e4eheh.e4ehehworkout.data.local.InMemorySessionDao
+import com.e4eheh.e4ehehworkout.data.repository.DefaultExerciseRepository
+import com.e4eheh.e4ehehworkout.data.repository.DefaultRoutineRepository
 import com.e4eheh.e4ehehworkout.data.repository.DefaultSessionRepository
 import com.e4eheh.e4ehehworkout.domain.model.Discipline
+import com.e4eheh.e4ehehworkout.domain.model.ExerciseInput
+import com.e4eheh.e4ehehworkout.domain.model.RoutineExerciseInput
+import com.e4eheh.e4ehehworkout.domain.model.RoutineInput
 import com.e4eheh.e4ehehworkout.domain.model.Session
 import com.e4eheh.e4ehehworkout.domain.model.SessionDraftInput
 import com.e4eheh.e4ehehworkout.domain.model.SessionStatus
+import com.e4eheh.e4ehehworkout.domain.model.TrackingMode
 import com.e4eheh.e4ehehworkout.domain.repository.SessionRepository
 import com.e4eheh.e4ehehworkout.testing.FakeClock
 import kotlinx.coroutines.Dispatchers
@@ -84,5 +92,55 @@ class AppShellViewModelTest {
             val state = viewModel.uiState.value
             assertFalse(state.isStartingSession)
             assertNull(state.pendingSessionId)
+        }
+
+    @Test
+    fun startSessionFromRoutine_publishesPendingNavigation_andRecoversOnFailure() =
+        runTest(testDispatcher) {
+            val exerciseDao = InMemoryExerciseDao()
+            val routineDao = InMemoryRoutineDao()
+            val exerciseRepository = DefaultExerciseRepository(exerciseDao, clock)
+            val routineRepository = DefaultRoutineRepository(routineDao, clock)
+            val sessionRepository = DefaultSessionRepository(
+                sessionDao = InMemorySessionDao(),
+                clock = clock,
+                routineDao = routineDao,
+                exerciseDao = exerciseDao,
+            )
+
+            val pullup = exerciseRepository.create(
+                ExerciseInput("Pull-up", Discipline.CALISTHENICS, TrackingMode.REPS_AND_LOAD)
+            )
+            val routine = routineRepository.create(
+                RoutineInput(
+                    name = "Pull Day",
+                    discipline = Discipline.CALISTHENICS,
+                    exercises = listOf(RoutineExerciseInput(pullup.id, defaultTargetSets = 4)),
+                )
+            )
+
+            val viewModel = AppShellViewModel(sessionRepository)
+            viewModel.startSessionFromRoutine(routine.id)
+            advanceUntilIdle()
+
+            val state = viewModel.uiState.value
+            assertFalse(state.isStartingSession)
+            val sessionId = state.pendingSessionId
+            assertNotNull(sessionId)
+
+            val persisted = sessionRepository.getById(sessionId!!)
+            assertNotNull(persisted)
+            assertEquals(routine.id, persisted!!.routineId)
+            assertEquals("Pull Day", persisted.title)
+            assertEquals(4, persisted.exercises.single().sets.size)
+
+            viewModel.consumePendingSessionNavigation(sessionId)
+            assertNull(viewModel.uiState.value.pendingSessionId)
+
+            // Missing Routine failure recovers cleanly without leaving isStartingSession stuck
+            viewModel.startSessionFromRoutine("missing-routine")
+            advanceUntilIdle()
+            assertFalse(viewModel.uiState.value.isStartingSession)
+            assertNull(viewModel.uiState.value.pendingSessionId)
         }
 }

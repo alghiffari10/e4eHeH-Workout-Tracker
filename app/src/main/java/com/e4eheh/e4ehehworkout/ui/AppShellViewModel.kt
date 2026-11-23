@@ -3,6 +3,7 @@ package com.e4eheh.e4ehehworkout.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.e4eheh.e4ehehworkout.domain.model.Session
 import com.e4eheh.e4ehehworkout.domain.repository.SessionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,12 +25,20 @@ class AppShellViewModel(
     val uiState: StateFlow<AppShellUiState> = _uiState.asStateFlow()
 
     fun startLiveBlankSession() {
+        launchSessionCreation { sessionRepository.createLiveBlankSession() }
+    }
+
+    fun startSessionFromRoutine(routineId: String) {
+        launchSessionCreation { sessionRepository.createLiveSessionFromRoutine(routineId) }
+    }
+
+    private inline fun launchSessionCreation(crossinline createSession: suspend () -> Session) {
         if (_uiState.value.isStartingSession) return
         _uiState.update { it.copy(isStartingSession = true) }
 
         viewModelScope.launch {
             try {
-                val created = sessionRepository.createLiveBlankSession()
+                val created = createSession()
                 _uiState.update {
                     it.copy(
                         isStartingSession = false,

@@ -50,6 +50,7 @@ fun WorkoutScreen(
     uiState: WorkoutUiState,
     onAction: (WorkoutAction) -> Unit,
     modifier: Modifier = Modifier,
+    onStartRoutineSession: (String) -> Unit = {},
 ) {
     val builder = uiState.routineBuilder
     if (builder != null) {
@@ -93,6 +94,7 @@ fun WorkoutScreen(
                 RoutineCard(
                     routine = routine,
                     exercisesById = uiState.exercisesById,
+                    onStartSessionClick = { onStartRoutineSession(routine.id) },
                     onEditClick = { onAction(WorkoutAction.OpenEditRoutine(routine)) },
                     onDeleteClick = { onAction(WorkoutAction.RequestDeleteRoutine(routine)) },
                     modifier = itemModifier,
@@ -310,6 +312,7 @@ private fun <T : Any> WorkoutCatalogSection(
 private fun RoutineCard(
     routine: Routine,
     exercisesById: Map<String, Exercise>,
+    onStartSessionClick: () -> Unit,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -404,6 +407,14 @@ private fun RoutineCard(
                 }
             }
         }
+        Spacer(modifier = Modifier.height(12.dp))
+        ArkhamPrimaryButton(
+            text = "START SESSION",
+            onClick = onStartSessionClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("routine_start_session_${routine.id}"),
+        )
     }
 }
 

@@ -43,6 +43,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.e4eheh.e4ehehworkout.domain.model.Discipline
 import com.e4eheh.e4ehehworkout.domain.model.DistanceUnit
 import com.e4eheh.e4ehehworkout.domain.model.TrackingMode
@@ -128,8 +130,22 @@ fun ActiveSessionScreen(
             },
             onSaveInlineExercise = { onAction(ActiveSessionAction.SaveInlineExercise) },
             modifier = modifier,
+            headerTitle = if (uiState.swappingExerciseIndex != null) {
+                "SWAP EXERCISE"
+            } else {
+                "ADD EXERCISE"
+            },
         )
         return
+    }
+
+    if (uiState.showUpdateRoutinePrompt) {
+        UpdateRoutinePromptDialog(
+            routineName = uiState.originatingRoutineName ?: uiState.draft.title,
+            onConfirm = { onAction(ActiveSessionAction.ConfirmFinishAndUpdateRoutine) },
+            onDecline = { onAction(ActiveSessionAction.DeclineRoutineUpdateAndFinish) },
+            onDismiss = { onAction(ActiveSessionAction.DismissRoutineUpdatePrompt) },
+        )
     }
 
     BackHandler(enabled = !uiState.isFinishing) {
@@ -231,7 +247,9 @@ fun ActiveSessionScreen(
                     key(exercise.id) {
                         SessionExerciseCard(
                             exerciseIndex = exerciseIndex,
+                            lastExerciseIndex = uiState.draft.exercises.lastIndex,
                             exercise = exercise,
+                            enabled = uiState.isEditable,
                             weightUnit = uiState.weightUnit,
                             distanceUnit = uiState.distanceUnit,
                             onAction = onAction,
@@ -342,11 +360,16 @@ private fun SessionMetadataPanel(
 @Composable
 private fun SessionExerciseCard(
     exerciseIndex: Int,
+    lastExerciseIndex: Int,
     exercise: ActiveSessionExerciseDraft,
+    enabled: Boolean,
     weightUnit: WeightUnit,
     distanceUnit: DistanceUnit,
     onAction: (ActiveSessionAction) -> Unit,
 ) {
+    val canMoveUp = enabled && exerciseIndex > 0
+    val canMoveDown = enabled && exerciseIndex < lastExerciseIndex
+
     ArkhamHudPanel(
         modifier = Modifier
             .fillMaxWidth()
@@ -356,7 +379,7 @@ private fun SessionExerciseCard(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
                     text = String.format(Locale.US, "%02d", exerciseIndex + 1),
@@ -367,16 +390,72 @@ private fun SessionExerciseCard(
                     text = exercise.exerciseName,
                     style = MaterialTheme.typography.titleMedium,
                     color = ArkhamColors.MintWhite,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 4.dp),
                 )
                 IconButton(
+                    onClick = { onAction(ActiveSessionAction.MoveExerciseUp(exerciseIndex)) },
+                    enabled = canMoveUp,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("session_exercise_move_up_$exerciseIndex"),
+                ) {
+                    Icon(
+                        imageVector = ArkhamIcons.ArrowUp,
+                        contentDescription = "Move ${exercise.exerciseName} up",
+                        tint = if (canMoveUp) {
+                            ArkhamColors.PhosphorGreenDim
+                        } else {
+                            ArkhamColors.MintMuted.copy(alpha = 0.35f)
+                        },
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                IconButton(
+                    onClick = { onAction(ActiveSessionAction.MoveExerciseDown(exerciseIndex)) },
+                    enabled = canMoveDown,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("session_exercise_move_down_$exerciseIndex"),
+                ) {
+                    Icon(
+                        imageVector = ArkhamIcons.ArrowDown,
+                        contentDescription = "Move ${exercise.exerciseName} down",
+                        tint = if (canMoveDown) {
+                            ArkhamColors.PhosphorGreenDim
+                        } else {
+                            ArkhamColors.MintMuted.copy(alpha = 0.35f)
+                        },
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                IconButton(
+                    onClick = { onAction(ActiveSessionAction.OpenSwapExercisePicker(exerciseIndex)) },
+                    enabled = enabled,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("session_exercise_swap_$exerciseIndex"),
+                ) {
+                    Icon(
+                        imageVector = ArkhamIcons.Swap,
+                        contentDescription = "Swap ${exercise.exerciseName}",
+                        tint = ArkhamColors.PhosphorGreenDim,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                IconButton(
                     onClick = { onAction(ActiveSessionAction.RemoveExercise(exerciseIndex)) },
-                    modifier = Modifier.testTag("session_exercise_remove_$exerciseIndex"),
+                    enabled = enabled,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("session_exercise_remove_$exerciseIndex"),
                 ) {
                     Icon(
                         imageVector = ArkhamIcons.Close,
                         contentDescription = "Remove ${exercise.exerciseName}",
                         tint = ArkhamColors.AlertRed,
+                        modifier = Modifier.size(18.dp),
                     )
                 }
             }
@@ -873,6 +952,66 @@ private fun CompactRestTimerBar(
                         .weight(1f)
                         .testTag("rest_timer_skip"),
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateRoutinePromptDialog(
+    routineName: String,
+    onConfirm: () -> Unit,
+    onDecline: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        ArkhamHudPanel(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .testTag("update_routine_prompt_dialog"),
+            highlighted = true,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Update Routine with these changes?",
+                    style = ArkhamTelemetryLargeStyle,
+                    color = ArkhamColors.PhosphorGreen,
+                )
+                if (routineName.isNotBlank()) {
+                    Text(
+                        text = routineName,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = ArkhamColors.MintWhite,
+                    )
+                }
+                Text(
+                    text = "Your Session Exercise order or target Set counts changed relative to this Routine. Save these structural changes to the Routine?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ArkhamColors.MintMuted,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    ArkhamSecondaryButton(
+                        text = "Decline",
+                        onClick = onDecline,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("update_routine_decline_button"),
+                    )
+                    ArkhamPrimaryButton(
+                        text = "Update Routine",
+                        onClick = onConfirm,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("update_routine_confirm_button"),
+                    )
+                }
             }
         }
     }
