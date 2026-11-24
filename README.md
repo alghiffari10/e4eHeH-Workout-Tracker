@@ -154,6 +154,3 @@ cd e4eHeH-Workout-Tracker
 
 ---
 
-## Roadmap
-
-- **Custom Backend Sync**: API-key authenticated sync client using the existing UUID, tombstone, and `syncStatus` metadata.
