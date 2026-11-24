@@ -18,6 +18,8 @@ import com.e4eheh.e4ehehworkout.domain.repository.RoutineRepository
 import com.e4eheh.e4ehehworkout.domain.repository.SessionRepository
 import com.e4eheh.e4ehehworkout.domain.repository.UserPreferencesRepository
 import com.e4eheh.e4ehehworkout.ui.components.InlineExerciseDraft
+import com.e4eheh.e4ehehworkout.ui.components.sanitizeDateText
+import com.e4eheh.e4ehehworkout.ui.components.sanitizeNonNegativeInt
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -563,9 +565,6 @@ class SessionEditorViewModel(
 
     private fun formatLocalTime(time: LocalTime): String =
         String.format(Locale.US, "%02d:%02d", time.hour, time.minute)
-
-    private fun sanitizeDateText(raw: String): String =
-        raw.filter { it.isDigit() || it == '-' }.take(10)
 
     private fun sanitizeTimeText(raw: String): String =
         raw.filter { it.isDigit() || it == ':' }.take(5)

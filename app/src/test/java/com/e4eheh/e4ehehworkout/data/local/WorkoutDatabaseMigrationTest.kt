@@ -5,10 +5,12 @@ import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.e4eheh.e4ehehworkout.data.repository.DefaultBodyweightRepository
 import com.e4eheh.e4ehehworkout.data.repository.DefaultExerciseRepository
 import com.e4eheh.e4ehehworkout.data.repository.DefaultRoutineRepository
 import com.e4eheh.e4ehehworkout.data.repository.DefaultSessionRepository
 import com.e4eheh.e4ehehworkout.data.repository.DefaultUserPreferencesRepository
+import com.e4eheh.e4ehehworkout.domain.model.BodyweightEntryInput
 import com.e4eheh.e4ehehworkout.domain.model.Discipline
 import com.e4eheh.e4ehehworkout.domain.model.DistanceUnit
 import com.e4eheh.e4ehehworkout.domain.model.RoutineExerciseInput
@@ -23,6 +25,7 @@ import com.e4eheh.e4ehehworkout.domain.model.UserPreferences
 import com.e4eheh.e4ehehworkout.domain.model.WeightUnit
 import com.e4eheh.e4ehehworkout.testing.FakeClock
 import java.time.Duration
+import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -86,11 +89,7 @@ class WorkoutDatabaseMigrationTest {
             }
 
             val migratedDb = Room.databaseBuilder(context, WorkoutDatabase::class.java, dbName)
-                .addMigrations(
-                    WorkoutDatabase.MIGRATION_1_2,
-                    WorkoutDatabase.MIGRATION_2_3,
-                    WorkoutDatabase.MIGRATION_3_4,
-                )
+                .addMigrations(*WorkoutDatabase.ALL_MIGRATIONS)
                 .allowMainThreadQueries()
                 .build()
             try {
@@ -119,11 +118,7 @@ class WorkoutDatabaseMigrationTest {
             }
 
             val reopenedDb = Room.databaseBuilder(context, WorkoutDatabase::class.java, dbName)
-                .addMigrations(
-                    WorkoutDatabase.MIGRATION_1_2,
-                    WorkoutDatabase.MIGRATION_2_3,
-                    WorkoutDatabase.MIGRATION_3_4,
-                )
+                .addMigrations(*WorkoutDatabase.ALL_MIGRATIONS)
                 .allowMainThreadQueries()
                 .build()
             try {
@@ -229,11 +224,7 @@ class WorkoutDatabaseMigrationTest {
             val createdRoutineExerciseIds: List<String>
 
             val migratedDb = Room.databaseBuilder(context, WorkoutDatabase::class.java, dbName)
-                .addMigrations(
-                    WorkoutDatabase.MIGRATION_1_2,
-                    WorkoutDatabase.MIGRATION_2_3,
-                    WorkoutDatabase.MIGRATION_3_4,
-                )
+                .addMigrations(*WorkoutDatabase.ALL_MIGRATIONS)
                 .allowMainThreadQueries()
                 .build()
             try {
@@ -275,11 +266,7 @@ class WorkoutDatabaseMigrationTest {
             }
 
             val reopenedDb = Room.databaseBuilder(context, WorkoutDatabase::class.java, dbName)
-                .addMigrations(
-                    WorkoutDatabase.MIGRATION_1_2,
-                    WorkoutDatabase.MIGRATION_2_3,
-                    WorkoutDatabase.MIGRATION_3_4,
-                )
+                .addMigrations(*WorkoutDatabase.ALL_MIGRATIONS)
                 .allowMainThreadQueries()
                 .build()
             try {
@@ -440,11 +427,7 @@ class WorkoutDatabaseMigrationTest {
 
             val createdSessionId: String
             val migratedDb = Room.databaseBuilder(context, WorkoutDatabase::class.java, dbName)
-                .addMigrations(
-                    WorkoutDatabase.MIGRATION_1_2,
-                    WorkoutDatabase.MIGRATION_2_3,
-                    WorkoutDatabase.MIGRATION_3_4,
-                )
+                .addMigrations(*WorkoutDatabase.ALL_MIGRATIONS)
                 .allowMainThreadQueries()
                 .build()
             try {
@@ -493,11 +476,7 @@ class WorkoutDatabaseMigrationTest {
             }
 
             val reopenedDb = Room.databaseBuilder(context, WorkoutDatabase::class.java, dbName)
-                .addMigrations(
-                    WorkoutDatabase.MIGRATION_1_2,
-                    WorkoutDatabase.MIGRATION_2_3,
-                    WorkoutDatabase.MIGRATION_3_4,
-                )
+                .addMigrations(*WorkoutDatabase.ALL_MIGRATIONS)
                 .allowMainThreadQueries()
                 .build()
             try {
@@ -516,6 +495,240 @@ class WorkoutDatabaseMigrationTest {
                     val set = ex.sets.single()
                     assertEquals(8, set.reps)
                     assertEquals(10.0, set.loadKg!!, 1e-6)
+                }
+            } finally {
+                reopenedDb.close()
+            }
+        } finally {
+            context.deleteDatabase(dbName)
+        }
+    }
+
+    @Test
+    fun migrate4To5_preservesExistingData_andPersistsBodyweightEntriesAcrossReopen() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val dbName = "migration_4_5_test_${UUID.randomUUID()}.db"
+        val dbFile = context.getDatabasePath(dbName)
+        val clock = FakeClock(Instant.parse("2026-11-23T08:00:00Z"))
+        val sessionId = "00000000-0000-4000-8000-000000000041"
+
+        try {
+            context.deleteDatabase(dbName)
+            dbFile.parentFile?.mkdirs()
+
+            val v4Db = SQLiteDatabase.openOrCreateDatabase(dbFile, null)
+            try {
+                v4Db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `exercises` (
+                        `id` TEXT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `discipline` TEXT NOT NULL,
+                        `trackingMode` TEXT NOT NULL,
+                        `defaultNotes` TEXT,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        `deletedAt` INTEGER,
+                        `syncStatus` TEXT NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                v4Db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `user_preferences` (
+                        `id` TEXT NOT NULL,
+                        `displayName` TEXT NOT NULL,
+                        `weightUnit` TEXT NOT NULL,
+                        `distanceUnit` TEXT NOT NULL,
+                        `defaultRestTimerSeconds` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                v4Db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `routines` (
+                        `id` TEXT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `discipline` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        `deletedAt` INTEGER,
+                        `syncStatus` TEXT NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                v4Db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `routine_exercises` (
+                        `id` TEXT NOT NULL,
+                        `routineId` TEXT NOT NULL,
+                        `exerciseId` TEXT NOT NULL,
+                        `sortOrder` INTEGER NOT NULL,
+                        `defaultTargetSets` INTEGER,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        `deletedAt` INTEGER,
+                        `syncStatus` TEXT NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                v4Db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_routine_exercises_routineId` ON `routine_exercises` (`routineId`)"
+                )
+                v4Db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_routine_exercises_exerciseId` ON `routine_exercises` (`exerciseId`)"
+                )
+                v4Db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `sessions` (
+                        `id` TEXT NOT NULL,
+                        `routineId` TEXT,
+                        `title` TEXT NOT NULL,
+                        `discipline` TEXT NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `startedAt` INTEGER NOT NULL,
+                        `completedAt` INTEGER,
+                        `durationSeconds` INTEGER NOT NULL,
+                        `notes` TEXT,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        `deletedAt` INTEGER,
+                        `syncStatus` TEXT NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                v4Db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_sessions_status` ON `sessions` (`status`)"
+                )
+                v4Db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_sessions_startedAt` ON `sessions` (`startedAt`)"
+                )
+                v4Db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_sessions_routineId` ON `sessions` (`routineId`)"
+                )
+                v4Db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `session_exercises` (
+                        `id` TEXT NOT NULL,
+                        `sessionId` TEXT NOT NULL,
+                        `exerciseId` TEXT NOT NULL,
+                        `exerciseName` TEXT NOT NULL,
+                        `exerciseDiscipline` TEXT NOT NULL,
+                        `trackingMode` TEXT NOT NULL,
+                        `sortOrder` INTEGER NOT NULL,
+                        `notes` TEXT,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        `deletedAt` INTEGER,
+                        `syncStatus` TEXT NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                v4Db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_session_exercises_sessionId` ON `session_exercises` (`sessionId`)"
+                )
+                v4Db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_session_exercises_exerciseId` ON `session_exercises` (`exerciseId`)"
+                )
+                v4Db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `session_sets` (
+                        `id` TEXT NOT NULL,
+                        `sessionExerciseId` TEXT NOT NULL,
+                        `sortOrder` INTEGER NOT NULL,
+                        `reps` INTEGER,
+                        `loadKg` REAL,
+                        `durationSeconds` INTEGER,
+                        `distanceKm` REAL,
+                        `rounds` INTEGER,
+                        `isCompleted` INTEGER NOT NULL,
+                        `isWarmup` INTEGER NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        `deletedAt` INTEGER,
+                        `syncStatus` TEXT NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                v4Db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_session_sets_sessionExerciseId` ON `session_sets` (`sessionExerciseId`)"
+                )
+                v4Db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)"
+                )
+                v4Db.execSQL(
+                    "INSERT OR REPLACE INTO room_master_table (id,identity_hash) " +
+                        "VALUES(42, '06158b8353ea91f8e8292ef5ebcf9bde')"
+                )
+                v4Db.execSQL(
+                    """
+                    INSERT INTO `sessions` (
+                        `id`, `routineId`, `title`, `discipline`, `status`,
+                        `startedAt`, `completedAt`, `durationSeconds`, `notes`,
+                        `createdAt`, `updatedAt`, `deletedAt`, `syncStatus`
+                    ) VALUES (
+                        '$sessionId', NULL, 'Morning Push', 'CALISTHENICS', 'COMPLETED',
+                        1700000000000, 1700001800000, 1800, NULL,
+                        1700000000000, 1700001800000, NULL, 'SYNCED'
+                    )
+                    """.trimIndent()
+                )
+                v4Db.version = 4
+            } finally {
+                v4Db.close()
+            }
+
+            val createdEntryId: String
+            val migratedDb = Room.databaseBuilder(context, WorkoutDatabase::class.java, dbName)
+                .addMigrations(*WorkoutDatabase.ALL_MIGRATIONS)
+                .allowMainThreadQueries()
+                .build()
+            try {
+                runBlocking {
+                    val preservedSession = DefaultSessionRepository(migratedDb.sessionDao(), clock)
+                        .getById(sessionId)
+                    assertNotNull(preservedSession)
+                    assertEquals("Morning Push", preservedSession!!.title)
+
+                    val bodyweightRepo = DefaultBodyweightRepository(
+                        migratedDb.bodyweightEntryDao(),
+                        clock,
+                    )
+                    val created = bodyweightRepo.create(
+                        BodyweightEntryInput(
+                            recordedAt = Instant.parse("2026-11-22T07:00:00Z"),
+                            weightKg = 74.5,
+                        ),
+                    )
+                    createdEntryId = created.id
+                }
+            } finally {
+                migratedDb.close()
+            }
+
+            val reopenedDb = Room.databaseBuilder(context, WorkoutDatabase::class.java, dbName)
+                .addMigrations(*WorkoutDatabase.ALL_MIGRATIONS)
+                .allowMainThreadQueries()
+                .build()
+            try {
+                runBlocking {
+                    val reloaded = DefaultBodyweightRepository(
+                        reopenedDb.bodyweightEntryDao(),
+                        clock,
+                    ).getById(createdEntryId)
+                    assertNotNull(reloaded)
+                    assertEquals(createdEntryId, reloaded!!.id)
+                    assertEquals(Instant.parse("2026-11-22T07:00:00Z"), reloaded.recordedAt)
+                    assertEquals(74.5, reloaded.weightKg, 1e-9)
+                    assertEquals(SyncStatus.PENDING, reloaded.syncStatus)
                 }
             } finally {
                 reopenedDb.close()

@@ -1,13 +1,16 @@
 package com.e4eheh.e4ehehworkout.ui.screens.progress
 
+import com.e4eheh.e4ehehworkout.data.local.InMemoryBodyweightEntryDao
 import com.e4eheh.e4ehehworkout.data.local.InMemoryExerciseDao
 import com.e4eheh.e4ehehworkout.data.local.InMemorySessionDao
 import com.e4eheh.e4ehehworkout.data.local.InMemoryUserPreferencesDao
+import com.e4eheh.e4ehehworkout.data.repository.DefaultBodyweightRepository
 import com.e4eheh.e4ehehworkout.data.repository.DefaultExerciseRepository
 import com.e4eheh.e4ehehworkout.data.repository.DefaultSessionRepository
 import com.e4eheh.e4ehehworkout.data.repository.DefaultUserPreferencesRepository
 import com.e4eheh.e4ehehworkout.domain.analytics.ProgressTimeRange
 import com.e4eheh.e4ehehworkout.domain.analytics.ProgressionMetric
+import com.e4eheh.e4ehehworkout.domain.model.BodyweightEntryInput
 import com.e4eheh.e4ehehworkout.domain.model.Discipline
 import com.e4eheh.e4ehehworkout.domain.model.DistanceUnit
 import com.e4eheh.e4ehehworkout.domain.model.ExerciseInput
@@ -17,6 +20,7 @@ import com.e4eheh.e4ehehworkout.domain.model.SessionSetDraftInput
 import com.e4eheh.e4ehehworkout.domain.model.TrackingMode
 import com.e4eheh.e4ehehworkout.domain.model.WeightUnit
 import com.e4eheh.e4ehehworkout.testing.FakeClock
+import com.e4eheh.e4ehehworkout.ui.components.BodyweightCrudAction
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -42,6 +46,8 @@ class ProgressViewModelTest {
     private val exerciseRepository = DefaultExerciseRepository(InMemoryExerciseDao(), clock)
     private val userPreferencesRepository =
         DefaultUserPreferencesRepository(InMemoryUserPreferencesDao(), clock)
+    private val bodyweightRepository =
+        DefaultBodyweightRepository(InMemoryBodyweightEntryDao(), clock)
 
     @Before
     fun setUp() {
@@ -57,6 +63,7 @@ class ProgressViewModelTest {
         sessionRepository = sessionRepository,
         exerciseRepository = exerciseRepository,
         userPreferencesRepository = userPreferencesRepository,
+        bodyweightRepository = bodyweightRepository,
         clock = clock,
     )
 
@@ -280,6 +287,63 @@ class ProgressViewModelTest {
             assertTrue(runOneWeek.hasAnyAllTimeHistory)
             assertEquals("08:03 /mi", runOneWeek.personalRecords.first { it.metric == ProgressionMetric.PACE }.formattedValue)
 
+            collector.cancel()
+        }
+
+    @Test
+    fun bodyweightTrend_filtersTimeRanges_updatesUnits_andSupportsCrudFromProgress() =
+        runTest(testDispatcher) {
+            bodyweightRepository.create(
+                BodyweightEntryInput(
+                    recordedAt = Instant.parse("2026-10-15T08:00:00Z"),
+                    weightKg = 76.0,
+                ),
+            )
+            bodyweightRepository.create(
+                BodyweightEntryInput(
+                    recordedAt = Instant.parse("2026-11-20T08:00:00Z"),
+                    weightKg = 74.0,
+                ),
+            )
+
+            val viewModel = createViewModel()
+            val collector = backgroundScope.launch { viewModel.uiState.collect {} }
+            advanceUntilIdle()
+
+            assertEquals(2, viewModel.uiState.value.bodyweightTrend.chartPoints.size)
+            assertEquals("KG", viewModel.uiState.value.bodyweightTrend.unitSuffix)
+            assertEquals("-2 kg", viewModel.uiState.value.bodyweightTrend.formattedRangeDelta)
+
+            viewModel.onAction(ProgressAction.SelectTimeRange(ProgressTimeRange.ONE_WEEK))
+            assertEquals(1, viewModel.uiState.value.bodyweightTrend.chartPoints.size)
+            assertEquals("74 kg", viewModel.uiState.value.bodyweightTrend.latestPoint?.formattedWeight)
+
+            // Switch unit to LB
+            userPreferencesRepository.updateWeightUnit(WeightUnit.LB)
+            advanceUntilIdle()
+            assertEquals("LB", viewModel.uiState.value.bodyweightTrend.unitSuffix)
+            assertEquals("163.14 lb", viewModel.uiState.value.bodyweightTrend.latestPoint?.formattedWeight)
+
+            // Log new entry directly from Progress
+            viewModel.onAction(ProgressAction.SelectTimeRange(ProgressTimeRange.ALL))
+            viewModel.onAction(ProgressAction.Bodyweight(BodyweightCrudAction.OpenCreate))
+            viewModel.onAction(ProgressAction.Bodyweight(BodyweightCrudAction.UpdateDate("2026-11-23")))
+            viewModel.onAction(ProgressAction.Bodyweight(BodyweightCrudAction.UpdateWeight("162")))
+            viewModel.onAction(ProgressAction.Bodyweight(BodyweightCrudAction.Save))
+            advanceUntilIdle()
+
+            assertEquals(3, viewModel.uiState.value.bodyweightTrend.chartPoints.size)
+            assertEquals("162 lb", viewModel.uiState.value.bodyweightTrend.latestPoint?.formattedWeight)
+
+            // Toggle manage entries and soft-delete the newest entry
+            viewModel.onAction(ProgressAction.ToggleManageBodyweight)
+            assertTrue(viewModel.uiState.value.isManageBodyweightOpen)
+            val newest = viewModel.uiState.value.bodyweightEntries.first().entry
+            viewModel.onAction(ProgressAction.Bodyweight(BodyweightCrudAction.RequestDelete(newest)))
+            viewModel.onAction(ProgressAction.Bodyweight(BodyweightCrudAction.ConfirmDelete))
+            advanceUntilIdle()
+
+            assertEquals(2, viewModel.uiState.value.bodyweightTrend.chartPoints.size)
             collector.cancel()
         }
 }

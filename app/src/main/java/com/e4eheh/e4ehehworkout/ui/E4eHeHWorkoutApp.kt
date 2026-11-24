@@ -178,6 +178,7 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
                                 sessionRepository = appContainer.sessionRepository,
                                 exerciseRepository = appContainer.exerciseRepository,
                                 userPreferencesRepository = appContainer.userPreferencesRepository,
+                                bodyweightRepository = appContainer.bodyweightRepository,
                                 clock = appContainer.clock,
                             ),
                         )
@@ -189,7 +190,11 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
                     }
                     composable(TopLevelTab.PROFILE.route) {
                         val viewModel: ProfileViewModel = viewModel(
-                            factory = ProfileViewModel.Factory(appContainer.userPreferencesRepository),
+                            factory = ProfileViewModel.Factory(
+                                userPreferencesRepository = appContainer.userPreferencesRepository,
+                                bodyweightRepository = appContainer.bodyweightRepository,
+                                clock = appContainer.clock,
+                            ),
                         )
                         val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                         ProfileScreen(

@@ -8,7 +8,9 @@ import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /** Selectable time-range windows on the Progress tab. */
@@ -150,4 +152,24 @@ object ProgressAnalyticsCalculator {
             disciplineBreakdown = calculateDisciplineBreakdownFromEligible(rangeSessions),
         )
     }
+}
+
+private val SAME_YEAR_DATE_FORMATTER: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("MMM d", Locale.US)
+private val CROSS_YEAR_DATE_FORMATTER: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("MMM d ''yy", Locale.US)
+
+/** Formats chart axis/inspection dates consistently across Progress telemetry charts. */
+internal fun formatChartDateLabel(
+    timestamp: Instant,
+    clock: Clock,
+): String {
+    val currentYear = clock.instant().atZone(clock.zone).year
+    val zoned = timestamp.atZone(clock.zone)
+    val formatter = if (zoned.year == currentYear) {
+        SAME_YEAR_DATE_FORMATTER
+    } else {
+        CROSS_YEAR_DATE_FORMATTER
+    }
+    return zoned.format(formatter)
 }

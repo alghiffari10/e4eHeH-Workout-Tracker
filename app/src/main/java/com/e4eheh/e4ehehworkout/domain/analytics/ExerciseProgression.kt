@@ -10,7 +10,6 @@ import com.e4eheh.e4ehehworkout.domain.model.WeightUnit
 import com.e4eheh.e4ehehworkout.domain.unit.UnitConverter
 import java.time.Clock
 import java.time.Instant
-import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -259,9 +258,6 @@ data class ExerciseProgressionReport(
 
 /** Pure-Kotlin calculator for per-Exercise Personal Records and progression chart series. */
 object ExerciseProgressionCalculator {
-    private val sameYearDateFormatter = DateTimeFormatter.ofPattern("MMM d", Locale.US)
-    private val crossYearDateFormatter = DateTimeFormatter.ofPattern("MMM d ''yy", Locale.US)
-
     fun selectDefaultExercise(
         exercises: List<Exercise>,
         sessions: List<Session>,
@@ -333,7 +329,7 @@ object ExerciseProgressionCalculator {
                         canonicalValue = canonical,
                         displayValue = metric.toDisplay(canonical, units),
                         formattedValue = metric.formatValue(canonical, units),
-                        dateLabel = formatDateLabel(entry.session.startedAt, clock),
+                        dateLabel = formatChartDateLabel(entry.session.startedAt, clock),
                     )
                 }
             }
@@ -402,20 +398,6 @@ object ExerciseProgressionCalculator {
             ProgressionMetric.ROUNDS_COMPLETED,
             ProgressionMetric.TOTAL_DURATION,
         )
-    }
-
-    private fun formatDateLabel(
-        timestamp: Instant,
-        clock: Clock,
-    ): String {
-        val currentYear = clock.instant().atZone(clock.zone).year
-        val zoned = timestamp.atZone(clock.zone)
-        val formatter = if (zoned.year == currentYear) {
-            sameYearDateFormatter
-        } else {
-            crossYearDateFormatter
-        }
-        return zoned.format(formatter)
     }
 
     private data class SessionWorkingSets(

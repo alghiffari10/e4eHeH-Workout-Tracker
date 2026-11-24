@@ -35,6 +35,9 @@ import com.e4eheh.e4ehehworkout.ui.components.ArkhamHudBadge
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamHudPanel
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSectionHeader
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSegmentTab
+import com.e4eheh.e4ehehworkout.ui.components.BodyweightCrudAction
+import com.e4eheh.e4ehehworkout.ui.components.BodyweightEntryEditorDialog
+import com.e4eheh.e4ehehworkout.ui.components.DeleteBodyweightEntryDialog
 import com.e4eheh.e4ehehworkout.ui.components.formatElapsedDuration
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryLargeStyle
@@ -74,7 +77,35 @@ fun ProgressScreen(
             onAction = onAction,
         )
 
-        SummaryStatsSection(analytics = analytics)
+        SummaryStatsSection(
+            uiState = uiState,
+            onAction = onAction,
+        )
+    }
+
+    uiState.bodyweightEditor?.let { editorState ->
+        BodyweightEntryEditorDialog(
+            state = editorState,
+            weightUnit = uiState.weightUnit,
+            onDateChange = { onAction(ProgressAction.Bodyweight(BodyweightCrudAction.UpdateDate(it))) },
+            onWeightChange = { onAction(ProgressAction.Bodyweight(BodyweightCrudAction.UpdateWeight(it))) },
+            onDismiss = { onAction(ProgressAction.Bodyweight(BodyweightCrudAction.DismissEditor)) },
+            onSave = { onAction(ProgressAction.Bodyweight(BodyweightCrudAction.Save)) },
+        )
+    }
+
+    uiState.deletingBodyweightEntry?.let { entry ->
+        val dateLabel = uiState.bodyweightEntries
+            .firstOrNull { it.entry.id == entry.id }
+            ?.dateLabel
+            .orEmpty()
+        DeleteBodyweightEntryDialog(
+            entry = entry,
+            dateLabel = dateLabel,
+            weightUnit = uiState.weightUnit,
+            onDismiss = { onAction(ProgressAction.Bodyweight(BodyweightCrudAction.DismissDelete)) },
+            onConfirm = { onAction(ProgressAction.Bodyweight(BodyweightCrudAction.ConfirmDelete)) },
+        )
     }
 }
 
@@ -417,7 +448,11 @@ private fun DisciplineBreakdownBarRow(item: DisciplineBreakdownItem) {
 }
 
 @Composable
-private fun SummaryStatsSection(analytics: ProgressAnalytics) {
+private fun SummaryStatsSection(
+    uiState: ProgressUiState,
+    onAction: (ProgressAction) -> Unit,
+) {
+    val analytics = uiState.analytics
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         ArkhamSectionHeader(
             title = "SUMMARY STATS",
@@ -454,29 +489,13 @@ private fun SummaryStatsSection(analytics: ProgressAnalytics) {
             )
         }
 
-        ArkhamHudPanel(
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("progress_bodyweight_trend_slot"),
-        ) {
-            Text(
-                text = "BODYWEIGHT TREND",
-                style = ArkhamTelemetryStyle,
-                color = ArkhamColors.PhosphorGreenDim,
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "STANDALONE TELEMETRY // READY FOR BODYWEIGHT ENTRIES",
-                style = MaterialTheme.typography.titleSmall,
-                color = ArkhamColors.MintWhite,
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Log dated Bodyweight Entries to visualize your standalone bodyweight trend across the selected time range.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = ArkhamColors.MintMuted,
-            )
-        }
+        BodyweightTrendSection(
+            report = uiState.bodyweightTrend,
+            entries = uiState.bodyweightEntries,
+            isManageOpen = uiState.isManageBodyweightOpen,
+            onToggleManage = { onAction(ProgressAction.ToggleManageBodyweight) },
+            onBodyweightAction = { onAction(ProgressAction.Bodyweight(it)) },
+        )
     }
 }
 

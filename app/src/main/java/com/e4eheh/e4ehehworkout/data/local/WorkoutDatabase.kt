@@ -15,8 +15,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SessionEntity::class,
         SessionExerciseEntity::class,
         SessionSetEntity::class,
+        BodyweightEntryEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class WorkoutDatabase : RoomDatabase() {
@@ -27,6 +28,8 @@ abstract class WorkoutDatabase : RoomDatabase() {
     abstract fun routineDao(): RoutineDao
 
     abstract fun sessionDao(): SessionDao
+
+    abstract fun bodyweightEntryDao(): BodyweightEntryDao
 
     companion object {
         const val DATABASE_NAME = "e4eheh_workout.db"
@@ -172,5 +175,34 @@ abstract class WorkoutDatabase : RoomDatabase() {
                 )
             }
         }
+
+        val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `bodyweight_entries` (
+                        `id` TEXT NOT NULL,
+                        `recordedAt` INTEGER NOT NULL,
+                        `weightKg` REAL NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        `deletedAt` INTEGER,
+                        `syncStatus` TEXT NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_bodyweight_entries_recordedAt` ON `bodyweight_entries` (`recordedAt`)"
+                )
+            }
+        }
+
+        val ALL_MIGRATIONS: Array<Migration> = arrayOf(
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+        )
     }
 }

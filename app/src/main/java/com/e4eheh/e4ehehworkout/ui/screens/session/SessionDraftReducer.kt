@@ -3,6 +3,8 @@ package com.e4eheh.e4ehehworkout.ui.screens.session
 import com.e4eheh.e4ehehworkout.domain.model.DistanceUnit
 import com.e4eheh.e4ehehworkout.domain.model.WeightUnit
 import com.e4eheh.e4ehehworkout.domain.unit.UnitConverter
+import com.e4eheh.e4ehehworkout.ui.components.sanitizeNonNegativeDecimal
+import com.e4eheh.e4ehehworkout.ui.components.sanitizeNonNegativeInt
 
 /**
  * Applies draft-mutating editor actions shared by live Session logging and completed Session detail.
@@ -75,23 +77,4 @@ internal fun ActiveSessionDraft.applyEditorAction(
         }
 
     else -> this
-}
-
-internal fun sanitizeNonNegativeInt(raw: String): String =
-    raw.filter { it.isDigit() }.take(6)
-
-internal fun sanitizeNonNegativeDecimal(raw: String): String {
-    val builder = StringBuilder()
-    var seenDecimal = false
-    for (ch in raw) {
-        when {
-            ch.isDigit() -> builder.append(ch)
-            ch == '.' && !seenDecimal -> {
-                seenDecimal = true
-                builder.append(ch)
-            }
-        }
-        if (builder.length >= 9) break
-    }
-    return builder.toString()
 }

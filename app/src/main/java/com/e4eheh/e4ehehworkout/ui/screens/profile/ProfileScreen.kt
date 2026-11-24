@@ -31,6 +31,11 @@ import com.e4eheh.e4ehehworkout.ui.components.ArkhamHudPanel
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamPrimaryButton
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSecondaryButton
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSectionHeader
+import com.e4eheh.e4ehehworkout.ui.components.BodyweightCrudAction
+import com.e4eheh.e4ehehworkout.ui.components.BodyweightEntryEditorDialog
+import com.e4eheh.e4ehehworkout.ui.components.BodyweightEntryRow
+import com.e4eheh.e4ehehworkout.ui.components.BodyweightEntryRowUi
+import com.e4eheh.e4ehehworkout.ui.components.DeleteBodyweightEntryDialog
 import com.e4eheh.e4ehehworkout.ui.components.arkhamTextFieldColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamShapes
@@ -78,7 +83,40 @@ fun ProfileScreen(
             onSelectPreset = { onAction(ProfileAction.SelectRestTimer(it)) },
         )
 
+        BodyweightEntriesPanel(
+            entries = uiState.bodyweightEntries,
+            weightUnit = uiState.preferences.weightUnit,
+            onLogEntry = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.OpenCreate)) },
+            onEditEntry = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.OpenEdit(it))) },
+            onDeleteEntry = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.RequestDelete(it))) },
+        )
+
         SyncPlaceholderPanel()
+    }
+
+    uiState.bodyweightEditor?.let { editorState ->
+        BodyweightEntryEditorDialog(
+            state = editorState,
+            weightUnit = uiState.preferences.weightUnit,
+            onDateChange = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.UpdateDate(it))) },
+            onWeightChange = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.UpdateWeight(it))) },
+            onDismiss = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.DismissEditor)) },
+            onSave = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.Save)) },
+        )
+    }
+
+    uiState.deletingBodyweightEntry?.let { entry ->
+        val dateLabel = uiState.bodyweightEntries
+            .firstOrNull { it.entry.id == entry.id }
+            ?.dateLabel
+            .orEmpty()
+        DeleteBodyweightEntryDialog(
+            entry = entry,
+            dateLabel = dateLabel,
+            weightUnit = uiState.preferences.weightUnit,
+            onDismiss = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.DismissDelete)) },
+            onConfirm = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.ConfirmDelete)) },
+        )
     }
 }
 
@@ -255,6 +293,70 @@ private fun DefaultRestTimerPanel(
                 onSelect = onSelectPreset,
                 testTagOf = { "rest_timer_preset_${it}s" },
             )
+        }
+    }
+}
+
+@Composable
+private fun BodyweightEntriesPanel(
+    entries: List<BodyweightEntryRowUi>,
+    weightUnit: WeightUnit,
+    onLogEntry: () -> Unit,
+    onEditEntry: (com.e4eheh.e4ehehworkout.domain.model.BodyweightEntry) -> Unit,
+    onDeleteEntry: (com.e4eheh.e4ehehworkout.domain.model.BodyweightEntry) -> Unit,
+) {
+    ArkhamHudPanel(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("profile_bodyweight_panel"),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "BODYWEIGHT ENTRIES",
+                    style = ArkhamTelemetryStyle,
+                    color = ArkhamColors.PhosphorGreenDim,
+                )
+                ArkhamHudBadge(
+                    label = "${entries.size} LOGGED",
+                    accentColor = if (entries.isEmpty()) ArkhamColors.MintMuted else ArkhamColors.PhosphorGreen,
+                )
+            }
+            Text(
+                text = "Tracked independently from Exercise load in ${weightUnit.symbol} and stored canonically in kg.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = ArkhamColors.MintMuted,
+            )
+            ArkhamPrimaryButton(
+                text = "+ LOG BODYWEIGHT",
+                onClick = onLogEntry,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("profile_log_bodyweight_button"),
+            )
+            if (entries.isEmpty()) {
+                Text(
+                    text = "NO BODYWEIGHT ENTRIES LOGGED",
+                    style = ArkhamTelemetryStyle,
+                    color = ArkhamColors.MintMuted,
+                    modifier = Modifier.testTag("profile_bodyweight_empty_state"),
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    entries.forEach { row ->
+                        BodyweightEntryRow(
+                            row = row,
+                            onEdit = { onEditEntry(row.entry) },
+                            onDelete = { onDeleteEntry(row.entry) },
+                            testTagPrefix = "bodyweight_entry",
+                        )
+                    }
+                }
+            }
         }
     }
 }
