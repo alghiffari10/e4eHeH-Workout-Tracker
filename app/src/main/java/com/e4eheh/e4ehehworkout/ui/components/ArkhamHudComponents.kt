@@ -514,3 +514,17 @@ fun formatElapsedDuration(totalSeconds: Long): String {
         String.format(Locale.US, "%02d:%02d", minutes, seconds)
     }
 }
+
+/** Formats a duration in seconds compactly for Routine telemetry badges (e.g. 45m, 1h 15m, 30s). */
+fun formatCompactDuration(totalSeconds: Long): String {
+    if (totalSeconds <= 0L) return "--"
+    val hours = totalSeconds / 3_600L
+    val minutes = (totalSeconds % 3_600L) / 60L
+    val seconds = totalSeconds % 60L
+    return when {
+        hours > 0L && minutes > 0L -> "${hours}h ${minutes}m"
+        hours > 0L -> "${hours}h"
+        minutes > 0L -> "${minutes}m"
+        else -> "${seconds}s"
+    }
+}

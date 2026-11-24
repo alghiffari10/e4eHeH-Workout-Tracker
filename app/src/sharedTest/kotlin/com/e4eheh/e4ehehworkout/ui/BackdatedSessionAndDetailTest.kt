@@ -277,7 +277,7 @@ class BackdatedSessionAndDetailTest {
             composeTestRule.onAllNodesWithTag("nav_tab_home").fetchSemanticsNodes().isNotEmpty()
         }
         composeTestRule.onNodeWithTag("home_completed_session_${completed.id}").assertDoesNotExist()
-        composeTestRule.onNodeWithText("NO SESSIONS LOGGED YET").assertIsDisplayed()
+        composeTestRule.onNodeWithText("NO SESSIONS LOGGED YET").performScrollTo().assertIsDisplayed()
 
         assertNull(runBlocking { container.sessionRepository.getById(completed.id) })
         val tombstone = runBlocking {

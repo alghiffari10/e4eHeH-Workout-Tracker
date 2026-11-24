@@ -60,8 +60,8 @@ class AppShellAndExerciseLibraryTest {
     @Test
     fun launch_opensDirectlyToBlankSlateHome_andNavigatesAllFourTabsAndQuickActionSheet() {
         composeTestRule.onNodeWithText("WELCOME BACK, OPERATOR").assertIsDisplayed()
-        composeTestRule.onNodeWithText("NO SESSIONS LOGGED YET").assertIsDisplayed()
-        composeTestRule.onNodeWithText("00 EXERCISES").assertIsDisplayed()
+        composeTestRule.onNodeWithText("NO SESSIONS LOGGED YET").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithText("00 EXERCISES").performScrollTo().assertIsDisplayed()
 
         composeTestRule.onNodeWithTag("nav_tab_home").assertIsDisplayed()
         composeTestRule.onNodeWithTag("nav_tab_workout").assertIsDisplayed()
@@ -133,7 +133,7 @@ class AppShellAndExerciseLibraryTest {
         composeTestRule.onAllNodesWithText("Calisthenics").assertCountEquals(2)
 
         composeTestRule.onNodeWithText("Home").performClick()
-        composeTestRule.onNodeWithText("02 EXERCISES").assertIsDisplayed()
+        composeTestRule.onNodeWithText("02 EXERCISES").performScrollTo().assertIsDisplayed()
     }
 
     @Test

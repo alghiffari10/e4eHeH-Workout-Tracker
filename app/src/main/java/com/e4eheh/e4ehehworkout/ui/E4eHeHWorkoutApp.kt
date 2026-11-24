@@ -130,19 +130,24 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
                         val viewModel: HomeViewModel = viewModel(
                             factory = HomeViewModel.Factory(
                                 exerciseRepository = appContainer.exerciseRepository,
+                                routineRepository = appContainer.routineRepository,
                                 sessionRepository = appContainer.sessionRepository,
+                                userPreferencesRepository = appContainer.userPreferencesRepository,
                                 clock = appContainer.clock,
                             ),
                         )
                         val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                         HomeScreen(
                             uiState = uiState,
+                            isStartingSession = shellUiState.isStartingSession,
                             onAction = viewModel::onAction,
                             onResumeSession = { sessionId ->
                                 navController.navigate(ActiveSessionRoute.createRoute(sessionId)) {
                                     launchSingleTop = true
                                 }
                             },
+                            onStartBlankSession = appShellViewModel::startLiveBlankSession,
+                            onStartRoutineSession = appShellViewModel::startSessionFromRoutine,
                             onNavigateToWorkout = { navigateToTab(TopLevelTab.WORKOUT) },
                             onOpenCompletedSession = { sessionId ->
                                 navController.navigate(

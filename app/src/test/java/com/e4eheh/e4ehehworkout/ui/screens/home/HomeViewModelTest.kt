@@ -1,11 +1,17 @@
 package com.e4eheh.e4ehehworkout.ui.screens.home
 
 import com.e4eheh.e4ehehworkout.data.local.InMemoryExerciseDao
+import com.e4eheh.e4ehehworkout.data.local.InMemoryRoutineDao
 import com.e4eheh.e4ehehworkout.data.local.InMemorySessionDao
+import com.e4eheh.e4ehehworkout.data.local.InMemoryUserPreferencesDao
 import com.e4eheh.e4ehehworkout.data.repository.DefaultExerciseRepository
+import com.e4eheh.e4ehehworkout.data.repository.DefaultRoutineRepository
 import com.e4eheh.e4ehehworkout.data.repository.DefaultSessionRepository
+import com.e4eheh.e4ehehworkout.data.repository.DefaultUserPreferencesRepository
 import com.e4eheh.e4ehehworkout.domain.model.Discipline
 import com.e4eheh.e4ehehworkout.domain.model.ExerciseInput
+import com.e4eheh.e4ehehworkout.domain.model.RoutineExerciseInput
+import com.e4eheh.e4ehehworkout.domain.model.RoutineInput
 import com.e4eheh.e4ehehworkout.domain.model.Session
 import com.e4eheh.e4ehehworkout.domain.model.SessionDraftInput
 import com.e4eheh.e4ehehworkout.domain.model.SessionExerciseDraftInput
@@ -15,6 +21,8 @@ import com.e4eheh.e4ehehworkout.domain.model.TrackingMode
 import com.e4eheh.e4ehehworkout.domain.repository.SessionRepository
 import com.e4eheh.e4ehehworkout.testing.FakeClock
 import java.time.Duration
+import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -29,6 +37,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -37,7 +46,10 @@ class HomeViewModelTest {
     private val testDispatcher = UnconfinedTestDispatcher()
     private val clock = FakeClock()
     private val exerciseRepository = DefaultExerciseRepository(InMemoryExerciseDao(), clock)
+    private val routineRepository = DefaultRoutineRepository(InMemoryRoutineDao(), clock)
     private val sessionRepository = DefaultSessionRepository(InMemorySessionDao(), clock)
+    private val userPreferencesRepository =
+        DefaultUserPreferencesRepository(InMemoryUserPreferencesDao(), clock)
 
     @Before
     fun setUp() {
@@ -53,7 +65,9 @@ class HomeViewModelTest {
         sessions: SessionRepository = sessionRepository,
     ): HomeViewModel = HomeViewModel(
         exerciseRepository = exerciseRepository,
+        routineRepository = routineRepository,
         sessionRepository = sessions,
+        userPreferencesRepository = userPreferencesRepository,
         clock = clock,
     )
 
@@ -76,6 +90,7 @@ class HomeViewModelTest {
             val collector = backgroundScope.launch { viewModel.uiState.collect {} }
             advanceUntilIdle()
 
+            assertEquals("OPERATOR", viewModel.uiState.value.displayName)
             assertEquals(1, viewModel.uiState.value.exerciseCount)
             assertNull(viewModel.uiState.value.activeSessionBanner)
             assertNull(viewModel.uiState.value.pendingDiscardSession)
@@ -219,7 +234,7 @@ class HomeViewModelTest {
     @Test
     fun discardFailure_surfacesErrorAndAllowsRetryWithoutWedgingUi() =
         runTest(testDispatcher) {
-            val session = sessionRepository.createLiveBlankSession(title = "Failing Draft")
+            sessionRepository.createLiveBlankSession(title = "Failing Draft")
             var shouldFail = true
             val flakyRepo = object : SessionRepository by sessionRepository {
                 override suspend fun softDelete(id: String): Session {
@@ -250,6 +265,202 @@ class HomeViewModelTest {
 
             assertNull(viewModel.uiState.value.discardError)
             assertNull(viewModel.uiState.value.activeSessionBanner)
+
+            collector.cancel()
+        }
+
+    @Test
+    fun personalizedGreeting_reflectsUpdatedDisplayNameFromPreferences() =
+        runTest(testDispatcher) {
+            val viewModel = createViewModel()
+            val collector = backgroundScope.launch { viewModel.uiState.collect {} }
+            advanceUntilIdle()
+
+            assertEquals("OPERATOR", viewModel.uiState.value.displayName)
+
+            userPreferencesRepository.updateDisplayName("Nightwing")
+            advanceUntilIdle()
+
+            assertEquals("Nightwing", viewModel.uiState.value.displayName)
+
+            collector.cancel()
+        }
+
+    @Test
+    fun startPicker_ordersSuggestedRoutineFirst_formatsLastVsEstimatedDuration_andTogglesVisibility() =
+        runTest(testDispatcher) {
+            val pushup = exerciseRepository.create(
+                ExerciseInput("Push-up", Discipline.CALISTHENICS, TrackingMode.REPS_AND_LOAD)
+            )
+            val pullup = exerciseRepository.create(
+                ExerciseInput("Pull-up", Discipline.CALISTHENICS, TrackingMode.REPS_AND_LOAD)
+            )
+            val push = routineRepository.create(
+                RoutineInput(
+                    name = "Calisthenics Push",
+                    discipline = Discipline.CALISTHENICS,
+                    exercises = listOf(RoutineExerciseInput(pushup.id, defaultTargetSets = 4)),
+                )
+            )
+            clock.advanceBy(Duration.ofMinutes(1))
+            val pull = routineRepository.create(
+                RoutineInput(
+                    name = "Calisthenics Pull",
+                    discipline = Discipline.CALISTHENICS,
+                    exercises = listOf(
+                        RoutineExerciseInput(pullup.id, defaultTargetSets = 3),
+                        RoutineExerciseInput(pushup.id, defaultTargetSets = 2),
+                    ),
+                )
+            )
+
+            // Completed Push -> Pull becomes suggested next, and Push gets LAST duration while Pull gets EST
+            sessionRepository.createCompletedSession(
+                startedAt = Instant.parse("2026-11-23T07:00:00Z"),
+                durationSeconds = 2_700L, // 45m
+                input = SessionDraftInput(title = "Calisthenics Push", discipline = Discipline.CALISTHENICS),
+                routineId = push.id,
+            )
+
+            val viewModel = createViewModel()
+            val collector = backgroundScope.launch { viewModel.uiState.collect {} }
+            advanceUntilIdle()
+
+            assertFalse(viewModel.uiState.value.isStartPickerVisible)
+            viewModel.onAction(HomeAction.OpenStartPicker)
+            assertTrue(viewModel.uiState.value.isStartPickerVisible)
+
+            assertEquals(pull.id, viewModel.uiState.value.suggestedRoutine?.routineId)
+            val pickerCards = viewModel.uiState.value.allRoutineCards
+            assertEquals(listOf(pull.id, push.id), pickerCards.map { it.routineId })
+            assertTrue(pickerCards[0].isSuggestedNext)
+            assertEquals("EST ~15m", pickerCards[0].durationLabel) // 5 sets * 180s = 900s = 15m
+            assertFalse(pickerCards[1].isSuggestedNext)
+            assertEquals("LAST 45m", pickerCards[1].durationLabel)
+
+            viewModel.onAction(HomeAction.DismissStartPicker)
+            assertFalse(viewModel.uiState.value.isStartPickerVisible)
+
+            collector.cancel()
+        }
+
+    @Test
+    fun weeklyCalendar_selectsAndTogglesDays_andClearsSelectionWhenWeekRollsOver() =
+        runTest(testDispatcher) {
+            val monSession = sessionRepository.createCompletedSession(
+                startedAt = Instant.parse("2026-11-23T07:00:00Z"),
+                durationSeconds = 1_800L,
+                input = SessionDraftInput(title = "Monday Push", discipline = Discipline.CALISTHENICS),
+            )
+            // Tuesday draft should not mark Tuesday
+            sessionRepository.createLiveBlankSession(title = "Tuesday Draft")
+
+            val viewModel = createViewModel()
+            val collector = backgroundScope.launch { viewModel.uiState.collect {} }
+            advanceUntilIdle()
+
+            val calendar = viewModel.uiState.value.weeklyCalendar
+            assertEquals(7, calendar.days.size)
+            assertEquals(1, calendar.activeDayCount)
+            assertEquals("NOV 23 - NOV 29", calendar.weekRangeLabel)
+            assertTrue(calendar.days[0].hasCompletedSessions)
+            assertFalse(calendar.days[1].hasCompletedSessions)
+
+            val monday = LocalDate.of(2026, 11, 23)
+            val tuesday = LocalDate.of(2026, 11, 24)
+
+            viewModel.onAction(HomeAction.SelectCalendarDate(monday))
+            assertEquals(monday, viewModel.uiState.value.selectedCalendarDate)
+            assertEquals(listOf(monSession.id), viewModel.uiState.value.selectedDaySessions.map { it.sessionId })
+
+            // Tapping the same day again collapses selection
+            viewModel.onAction(HomeAction.SelectCalendarDate(monday))
+            assertNull(viewModel.uiState.value.selectedCalendarDate)
+            assertTrue(viewModel.uiState.value.selectedDaySessions.isEmpty())
+
+            // Select Tuesday (empty)
+            viewModel.onAction(HomeAction.SelectCalendarDate(tuesday))
+            assertEquals(tuesday, viewModel.uiState.value.selectedCalendarDate)
+            assertTrue(viewModel.uiState.value.selectedDaySessions.isEmpty())
+
+            // Advancing clock into next week clears stale selection
+            clock.advanceBy(Duration.ofDays(7))
+            viewModel.onAction(HomeAction.RefreshElapsed)
+            assertNull(viewModel.uiState.value.selectedCalendarDate)
+
+            collector.cancel()
+        }
+
+    @Test
+    fun disciplineFilter_filtersCarouselOnly_andRecentActivityCapsAtTenNewestCompletedSessions() =
+        runTest(testDispatcher) {
+            val ex = exerciseRepository.create(
+                ExerciseInput("Kettlebell Swing", Discipline.CONDITIONING, TrackingMode.CONDITIONING_ROUNDS)
+            )
+            val calisthenicsRoutine = routineRepository.create(
+                RoutineInput(
+                    name = "Alpha Push",
+                    discipline = Discipline.CALISTHENICS,
+                    exercises = listOf(RoutineExerciseInput(ex.id, defaultTargetSets = 3)),
+                )
+            )
+            val conditioningRoutine = routineRepository.create(
+                RoutineInput(
+                    name = "Beta EMOM",
+                    discipline = Discipline.CONDITIONING,
+                    exercises = listOf(RoutineExerciseInput(ex.id, defaultTargetSets = 2)),
+                )
+            )
+
+            // Seed 12 completed sessions + 1 IN_PROGRESS + 1 soft-deleted
+            val createdIds = mutableListOf<String>()
+            repeat(12) { idx ->
+                val created = sessionRepository.createCompletedSession(
+                    startedAt = Instant.parse("2026-11-10T08:00:00Z").plus(Duration.ofHours(idx.toLong())),
+                    durationSeconds = 1_200L,
+                    input = SessionDraftInput(
+                        title = "Session $idx",
+                        discipline = Discipline.CALISTHENICS,
+                    ),
+                )
+                createdIds += created.id
+            }
+            val deleted = sessionRepository.createCompletedSession(
+                startedAt = Instant.parse("2026-11-23T07:00:00Z"),
+                durationSeconds = 900L,
+                input = SessionDraftInput(title = "Deleted", discipline = Discipline.CARDIO),
+            )
+            sessionRepository.softDelete(deleted.id)
+            sessionRepository.createLiveBlankSession(title = "Active Draft")
+
+            val viewModel = createViewModel()
+            val collector = backgroundScope.launch { viewModel.uiState.collect {} }
+            advanceUntilIdle()
+
+            // Recent activity capped at 10 newest completed sessions
+            val recent = viewModel.uiState.value.completedSessions
+            assertEquals(10, recent.size)
+            assertEquals(createdIds.last(), recent.first().sessionId)
+            assertEquals(createdIds[2], recent.last().sessionId)
+
+            // Filtering by Discipline affects carousel only, leaving allRoutineCards intact
+            assertEquals(2, viewModel.uiState.value.filteredRoutineCards.size)
+            viewModel.onAction(HomeAction.SelectDisciplineFilter(Discipline.CONDITIONING))
+            assertEquals(Discipline.CONDITIONING, viewModel.uiState.value.selectedDisciplineFilter)
+            assertEquals(
+                listOf(conditioningRoutine.id),
+                viewModel.uiState.value.filteredRoutineCards.map { it.routineId },
+            )
+            assertEquals(2, viewModel.uiState.value.allRoutineCards.size)
+
+            viewModel.onAction(HomeAction.SelectDisciplineFilter(Discipline.CARDIO))
+            assertTrue(viewModel.uiState.value.filteredRoutineCards.isEmpty())
+
+            viewModel.onAction(HomeAction.SelectDisciplineFilter(null))
+            assertEquals(
+                setOf(calisthenicsRoutine.id, conditioningRoutine.id),
+                viewModel.uiState.value.filteredRoutineCards.map { it.routineId }.toSet(),
+            )
 
             collector.cancel()
         }
