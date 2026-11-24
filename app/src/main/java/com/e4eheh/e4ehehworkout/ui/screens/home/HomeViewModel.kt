@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.e4eheh.e4ehehworkout.domain.analytics.HomeTelemetryCalculator
-import com.e4eheh.e4ehehworkout.domain.analytics.ProgressAnalyticsCalculator
 import com.e4eheh.e4ehehworkout.domain.analytics.RoutineDurationSource
 import com.e4eheh.e4ehehworkout.domain.analytics.WeeklyCalendarWindow
 import com.e4eheh.e4ehehworkout.domain.model.Discipline
@@ -59,7 +58,6 @@ data class WeeklyCalendarDayUi(
     val dayOfMonth: Int,
     val isToday: Boolean,
     val hasCompletedSessions: Boolean,
-    val sessionCount: Int,
 )
 
 /** UI state for the Monday–Sunday weekly calendar strip on Home. */
@@ -67,6 +65,13 @@ data class WeeklyCalendarUi(
     val weekRangeLabel: String = "",
     val activeDayCount: Int = 0,
     val days: List<WeeklyCalendarDayUi> = emptyList(),
+)
+
+/** Inspected calendar day details shown beneath the weekly calendar strip when a day is selected. */
+data class SelectedCalendarDayUi(
+    val date: LocalDate,
+    val dayLabel: String,
+    val sessions: List<CompletedSessionHistoryItem>,
 )
 
 /** UI card model for a Routine in both the START picker and the Home Routine carousel. */
@@ -89,9 +94,7 @@ data class HomeUiState(
     val discardError: String? = null,
     val isStartPickerVisible: Boolean = false,
     val weeklyCalendar: WeeklyCalendarUi = WeeklyCalendarUi(),
-    val selectedCalendarDate: LocalDate? = null,
-    val selectedCalendarDayLabel: String? = null,
-    val selectedDaySessions: List<CompletedSessionHistoryItem> = emptyList(),
+    val selectedCalendarDay: SelectedCalendarDayUi? = null,
     val selectedDisciplineFilter: Discipline? = null,
     val allRoutineCards: List<HomeRoutineCardUi> = emptyList(),
     val filteredRoutineCards: List<HomeRoutineCardUi> = emptyList(),
@@ -146,11 +149,14 @@ class HomeViewModel(
         }
 
         val calendarWindow = HomeTelemetryCalculator.buildWeeklyCalendar(sessions, clock)
-        val validSelectedDate = state.selectedCalendarDate?.takeIf {
-            !it.isBefore(calendarWindow.weekStart) && !it.isAfter(calendarWindow.weekEnd)
-        }
-        val selectedDay = validSelectedDate?.let { date ->
-            calendarWindow.days.firstOrNull { it.date == date }
+        val validSelectedDate = state.selectedCalendarDate?.takeIf(calendarWindow::contains)
+        val selectedCalendarDay = validSelectedDate?.let { date ->
+            val day = calendarWindow.days.firstOrNull { it.date == date }
+            SelectedCalendarDayUi(
+                date = date,
+                dayLabel = formatSelectedDayLabel(date),
+                sessions = day?.completedSessions.orEmpty().map { it.toHistoryItem(clock) },
+            )
         }
 
         val suggested = HomeTelemetryCalculator.suggestNextRoutine(routines, sessions)
@@ -168,8 +174,7 @@ class HomeViewModel(
             allCards.filter { it.discipline == filter }
         } ?: allCards
 
-        val recentCompleted = ProgressAnalyticsCalculator.filterEligibleSessions(sessions)
-            .sortedWith(compareByDescending<Session> { it.startedAt }.thenByDescending { it.createdAt })
+        val recentCompleted = HomeTelemetryCalculator.completedSessionsNewestFirst(sessions)
             .take(RECENT_ACTIVITY_LIMIT)
             .map { it.toHistoryItem(clock) }
 
@@ -185,9 +190,7 @@ class HomeViewModel(
             discardError = if (activeBanner != null) state.discardError else null,
             isStartPickerVisible = state.isStartPickerVisible,
             weeklyCalendar = calendarWindow.toUi(),
-            selectedCalendarDate = validSelectedDate,
-            selectedCalendarDayLabel = validSelectedDate?.let(::formatSelectedDayLabel),
-            selectedDaySessions = selectedDay?.completedSessions.orEmpty().map { it.toHistoryItem(clock) },
+            selectedCalendarDay = selectedCalendarDay,
             selectedDisciplineFilter = state.selectedDisciplineFilter,
             allRoutineCards = allCards,
             filteredRoutineCards = filteredCards,
@@ -205,10 +208,9 @@ class HomeViewModel(
     fun onAction(action: HomeAction) {
         when (action) {
             HomeAction.RefreshElapsed -> {
-                val calendarWindow = HomeTelemetryCalculator.buildWeeklyCalendar(emptyList(), clock)
                 internalState.update { current ->
                     val retainedDate = current.selectedCalendarDate?.takeIf {
-                        !it.isBefore(calendarWindow.weekStart) && !it.isAfter(calendarWindow.weekEnd)
+                        HomeTelemetryCalculator.isDateInCurrentWeek(it, clock)
                     }
                     current.copy(
                         clockTick = current.clockTick + 1L,
@@ -313,7 +315,6 @@ class HomeViewModel(
                 dayOfMonth = day.date.dayOfMonth,
                 isToday = day.isToday,
                 hasCompletedSessions = day.hasCompletedSessions,
-                sessionCount = day.completedSessions.size,
             )
         },
     )

@@ -29,6 +29,9 @@ data class WeeklyCalendarWindow(
 ) {
     val activeDayCount: Int
         get() = days.count { it.hasCompletedSessions }
+
+    fun contains(date: LocalDate): Boolean =
+        !date.isBefore(weekStart) && !date.isAfter(weekEnd)
 }
 
 /** Provenance of a Routine card's displayed duration on Home. */
@@ -48,6 +51,19 @@ object HomeTelemetryCalculator {
     const val DEFAULT_ESTIMATED_SETS_PER_EXERCISE = 3
     const val ESTIMATED_SECONDS_PER_SET = 180L
 
+    fun currentWeekStart(clock: Clock): LocalDate =
+        clock.instant().atZone(clock.zone).toLocalDate()
+            .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+
+    fun isDateInCurrentWeek(date: LocalDate, clock: Clock): Boolean {
+        val weekStart = currentWeekStart(clock)
+        return !date.isBefore(weekStart) && !date.isAfter(weekStart.plusDays(6L))
+    }
+
+    fun completedSessionsNewestFirst(sessions: List<Session>): List<Session> =
+        ProgressAnalyticsCalculator.filterEligibleSessions(sessions)
+            .sortedWith(compareByDescending<Session> { it.startedAt }.thenByDescending { it.createdAt })
+
     fun buildWeeklyCalendar(
         sessions: List<Session>,
         clock: Clock,
@@ -57,8 +73,7 @@ object HomeTelemetryCalculator {
         val weekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
         val weekEnd = weekStart.plusDays(6L)
 
-        val sessionsByDate = ProgressAnalyticsCalculator.filterEligibleSessions(sessions)
-            .sortedWith(compareByDescending<Session> { it.startedAt }.thenByDescending { it.createdAt })
+        val sessionsByDate = completedSessionsNewestFirst(sessions)
             .groupBy { session -> session.startedAt.atZone(zone).toLocalDate() }
 
         val days = (0L..6L).map { offset ->

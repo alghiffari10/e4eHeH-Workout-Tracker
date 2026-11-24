@@ -370,23 +370,25 @@ class HomeViewModelTest {
             val tuesday = LocalDate.of(2026, 11, 24)
 
             viewModel.onAction(HomeAction.SelectCalendarDate(monday))
-            assertEquals(monday, viewModel.uiState.value.selectedCalendarDate)
-            assertEquals(listOf(monSession.id), viewModel.uiState.value.selectedDaySessions.map { it.sessionId })
+            assertEquals(monday, viewModel.uiState.value.selectedCalendarDay?.date)
+            assertEquals(
+                listOf(monSession.id),
+                viewModel.uiState.value.selectedCalendarDay?.sessions?.map { it.sessionId },
+            )
 
             // Tapping the same day again collapses selection
             viewModel.onAction(HomeAction.SelectCalendarDate(monday))
-            assertNull(viewModel.uiState.value.selectedCalendarDate)
-            assertTrue(viewModel.uiState.value.selectedDaySessions.isEmpty())
+            assertNull(viewModel.uiState.value.selectedCalendarDay)
 
             // Select Tuesday (empty)
             viewModel.onAction(HomeAction.SelectCalendarDate(tuesday))
-            assertEquals(tuesday, viewModel.uiState.value.selectedCalendarDate)
-            assertTrue(viewModel.uiState.value.selectedDaySessions.isEmpty())
+            assertEquals(tuesday, viewModel.uiState.value.selectedCalendarDay?.date)
+            assertTrue(viewModel.uiState.value.selectedCalendarDay?.sessions.orEmpty().isEmpty())
 
             // Advancing clock into next week clears stale selection
             clock.advanceBy(Duration.ofDays(7))
             viewModel.onAction(HomeAction.RefreshElapsed)
-            assertNull(viewModel.uiState.value.selectedCalendarDate)
+            assertNull(viewModel.uiState.value.selectedCalendarDay)
 
             collector.cancel()
         }

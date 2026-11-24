@@ -148,9 +148,7 @@ fun HomeScreen(
 
         WeeklyCalendarSection(
             calendar = uiState.weeklyCalendar,
-            selectedDate = uiState.selectedCalendarDate,
-            selectedDayLabel = uiState.selectedCalendarDayLabel,
-            selectedDaySessions = uiState.selectedDaySessions,
+            selectedDay = uiState.selectedCalendarDay,
             onSelectDate = { date -> onAction(HomeAction.SelectCalendarDate(date)) },
             onOpenCompletedSession = onOpenCompletedSession,
         )
@@ -266,9 +264,7 @@ private fun StartHeroCard(
 @Composable
 private fun WeeklyCalendarSection(
     calendar: WeeklyCalendarUi,
-    selectedDate: java.time.LocalDate?,
-    selectedDayLabel: String?,
-    selectedDaySessions: List<CompletedSessionHistoryItem>,
+    selectedDay: SelectedCalendarDayUi?,
     onSelectDate: (java.time.LocalDate) -> Unit,
     onOpenCompletedSession: (String) -> Unit,
 ) {
@@ -289,7 +285,7 @@ private fun WeeklyCalendarSection(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 calendar.days.forEach { day ->
-                    val isSelected = day.date == selectedDate
+                    val isSelected = day.date == selectedDay?.date
                     val borderColor = when {
                         isSelected -> ArkhamColors.PhosphorGreen
                         day.isToday -> ArkhamColors.PhosphorGreenDim
@@ -366,7 +362,7 @@ private fun WeeklyCalendarSection(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            if (selectedDate == null) {
+            if (selectedDay == null) {
                 Text(
                     text = "TAP ANY DAY TO INSPECT LOGGED SESSIONS",
                     style = ArkhamTelemetryStyle,
@@ -385,17 +381,17 @@ private fun WeeklyCalendarSection(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = selectedDayLabel.orEmpty(),
+                            text = selectedDay.dayLabel,
                             style = ArkhamTelemetryStyle,
                             color = ArkhamColors.PhosphorGreen,
                         )
                         ArkhamHudBadge(
-                            label = if (selectedDaySessions.size == 1) {
+                            label = if (selectedDay.sessions.size == 1) {
                                 "1 SESSION"
                             } else {
-                                "${selectedDaySessions.size} SESSIONS"
+                                "${selectedDay.sessions.size} SESSIONS"
                             },
-                            accentColor = if (selectedDaySessions.isEmpty()) {
+                            accentColor = if (selectedDay.sessions.isEmpty()) {
                                 ArkhamColors.MintMuted
                             } else {
                                 ArkhamColors.PhosphorGreen
@@ -403,7 +399,7 @@ private fun WeeklyCalendarSection(
                         )
                     }
 
-                    if (selectedDaySessions.isEmpty()) {
+                    if (selectedDay.sessions.isEmpty()) {
                         Text(
                             text = "NO SESSIONS LOGGED ON THIS DAY",
                             style = MaterialTheme.typography.bodyMedium,
@@ -411,7 +407,7 @@ private fun WeeklyCalendarSection(
                             modifier = Modifier.testTag("home_calendar_day_empty"),
                         )
                     } else {
-                        selectedDaySessions.forEach { session ->
+                        selectedDay.sessions.forEach { session ->
                             key(session.sessionId) {
                                 ArkhamHudPanel(
                                     contentPadding = PaddingValues(12.dp),
@@ -593,19 +589,12 @@ private fun RoutineCarouselSection(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HomeRoutineCarouselCard(
     card: HomeRoutineCardUi,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    val exerciseCountLabel = if (card.exerciseCount == 1) {
-        "1 EXERCISE"
-    } else {
-        "${card.exerciseCount} EXERCISES"
-    }
-
     ArkhamHudPanel(
         highlighted = card.isSuggestedNext,
         modifier = Modifier
@@ -644,21 +633,12 @@ private fun HomeRoutineCarouselCard(
         )
         Spacer(modifier = Modifier.height(10.dp))
 
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            ArkhamHudBadge(
-                label = exerciseCountLabel,
-                accentColor = ArkhamColors.PhosphorGreenDim,
-                modifier = Modifier.testTag("home_routine_card_exercises_${card.routineId}"),
-            )
-            ArkhamHudBadge(
-                label = card.durationLabel,
-                accentColor = ArkhamColors.MintMuted,
-                modifier = Modifier.testTag("home_routine_card_duration_${card.routineId}"),
-            )
-        }
+        HomeRoutineMetadataBadges(
+            card = card,
+            showDisciplineBadge = false,
+            exerciseCountTestTag = "home_routine_card_exercises_${card.routineId}",
+            durationTestTag = "home_routine_card_duration_${card.routineId}",
+        )
 
         Spacer(modifier = Modifier.height(10.dp))
         Text(

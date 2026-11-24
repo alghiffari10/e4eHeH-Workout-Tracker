@@ -102,11 +102,6 @@ fun HomeStartPickerSheet(
                 }
             } else {
                 routineCards.forEach { card ->
-                    val exerciseCountLabel = if (card.exerciseCount == 1) {
-                        "1 EXERCISE"
-                    } else {
-                        "${card.exerciseCount} EXERCISES"
-                    }
                     ArkhamHudPanel(
                         highlighted = card.isSuggestedNext,
                         modifier = Modifier
@@ -142,23 +137,7 @@ fun HomeStartPickerSheet(
                             }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            ArkhamHudBadge(
-                                label = card.discipline.displayName,
-                                accentColor = ArkhamColors.PhosphorGreen,
-                            )
-                            ArkhamHudBadge(
-                                label = exerciseCountLabel,
-                                accentColor = ArkhamColors.PhosphorGreenDim,
-                            )
-                            ArkhamHudBadge(
-                                label = card.durationLabel,
-                                accentColor = ArkhamColors.MintMuted,
-                            )
-                        }
+                        HomeRoutineMetadataBadges(card = card)
                     }
                 }
             }
@@ -198,5 +177,41 @@ fun HomeStartPickerSheet(
             )
             Spacer(modifier = Modifier.height(12.dp))
         }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun HomeRoutineMetadataBadges(
+    card: HomeRoutineCardUi,
+    showDisciplineBadge: Boolean = true,
+    exerciseCountTestTag: String? = null,
+    durationTestTag: String? = null,
+) {
+    val exerciseCountLabel = if (card.exerciseCount == 1) {
+        "1 EXERCISE"
+    } else {
+        "${card.exerciseCount} EXERCISES"
+    }
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (showDisciplineBadge) {
+            ArkhamHudBadge(
+                label = card.discipline.displayName,
+                accentColor = ArkhamColors.PhosphorGreen,
+            )
+        }
+        ArkhamHudBadge(
+            label = exerciseCountLabel,
+            accentColor = ArkhamColors.PhosphorGreenDim,
+            modifier = exerciseCountTestTag?.let { Modifier.testTag(it) } ?: Modifier,
+        )
+        ArkhamHudBadge(
+            label = card.durationLabel,
+            accentColor = ArkhamColors.MintMuted,
+            modifier = durationTestTag?.let { Modifier.testTag(it) } ?: Modifier,
+        )
     }
 }
