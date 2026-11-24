@@ -31,11 +31,20 @@ data class BodyweightEntryRowUi(
 data class BodyweightEntryEditorState(
     val editingEntryId: String? = null,
     val originalRecordedAt: Instant? = null,
+    val originalWeightKg: Double? = null,
+    val initialWeightText: String = "",
     val dateText: String = "",
     val weightText: String = "",
     val dateError: String? = null,
     val weightError: String? = null,
     val isSaving: Boolean = false,
+)
+
+/** Shared UI state bundle for Bodyweight Entry rows and active editor/delete dialogs. */
+data class BodyweightSectionState(
+    val entries: List<BodyweightEntryRowUi> = emptyList(),
+    val editor: BodyweightEntryEditorState? = null,
+    val deletingEntry: BodyweightEntry? = null,
 )
 
 /** Combined modal dialog state exposed by BodyweightEntryCoordinator. */
@@ -86,14 +95,17 @@ class BodyweightEntryCoordinator(
 
             is BodyweightCrudAction.OpenEdit -> {
                 val entryDate = action.entry.recordedAt.atZone(clock.zone).toLocalDate()
+                val formattedWeight = UnitConverter.formatWeightValue(
+                    canonicalKg = action.entry.weightKg,
+                    unit = currentWeightUnit(),
+                )
                 editorState.value = BodyweightEntryEditorState(
                     editingEntryId = action.entry.id,
                     originalRecordedAt = action.entry.recordedAt,
+                    originalWeightKg = action.entry.weightKg,
+                    initialWeightText = formattedWeight,
                     dateText = entryDate.toString(),
-                    weightText = UnitConverter.formatWeightValue(
-                        canonicalKg = action.entry.weightKg,
-                        unit = currentWeightUnit(),
-                    ),
+                    weightText = formattedWeight,
                 )
             }
 
@@ -155,7 +167,8 @@ class BodyweightEntryCoordinator(
             else -> null
         }
 
-        val parsedWeight = state.weightText.trim().toDoubleOrNull()
+        val trimmedWeight = state.weightText.trim()
+        val parsedWeight = trimmedWeight.toDoubleOrNull()
         val weightError = if (parsedWeight == null || !parsedWeight.isFinite() || parsedWeight <= 0.0) {
             "Enter a valid bodyweight greater than 0."
         } else {
@@ -177,7 +190,15 @@ class BodyweightEntryCoordinator(
             today = today,
             originalRecordedAt = state.originalRecordedAt,
         )
-        val canonicalKg = UnitConverter.weightToCanonicalKg(validWeight, currentWeightUnit())
+        // Preserve exact canonical kg when editing an entry's date without modifying its weight text.
+        val canonicalKg = if (state.editingEntryId != null &&
+            state.originalWeightKg != null &&
+            trimmedWeight == state.initialWeightText
+        ) {
+            state.originalWeightKg
+        } else {
+            UnitConverter.weightToCanonicalKg(validWeight, currentWeightUnit())
+        }
 
         editorState.value = state.copy(isSaving = true, dateError = null, weightError = null)
         scope.launch {
@@ -238,14 +259,21 @@ class BodyweightEntryCoordinator(
     }
 
     companion object {
-        fun toRowUi(
-            entry: BodyweightEntry,
+        fun buildSectionState(
+            entries: List<BodyweightEntry>,
+            modalState: BodyweightModalState,
             weightUnit: WeightUnit,
             clock: Clock,
-        ): BodyweightEntryRowUi = BodyweightEntryRowUi(
-            entry = entry,
-            dateLabel = formatChartDateLabel(entry.recordedAt, clock),
-            formattedWeight = UnitConverter.formatWeight(entry.weightKg, weightUnit),
+        ): BodyweightSectionState = BodyweightSectionState(
+            entries = entries.map { entry ->
+                BodyweightEntryRowUi(
+                    entry = entry,
+                    dateLabel = formatChartDateLabel(entry.recordedAt, clock),
+                    formattedWeight = UnitConverter.formatWeight(entry.weightKg, weightUnit),
+                )
+            },
+            editor = modalState.editor,
+            deletingEntry = modalState.deletingEntry,
         )
     }
 }

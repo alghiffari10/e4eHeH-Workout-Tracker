@@ -3,8 +3,6 @@ package com.e4eheh.e4ehehworkout.domain.analytics
 import com.e4eheh.e4ehehworkout.domain.model.BodyweightEntry
 import com.e4eheh.e4ehehworkout.domain.model.WeightUnit
 import com.e4eheh.e4ehehworkout.domain.unit.UnitConverter
-import java.math.BigDecimal
-import java.math.RoundingMode
 import java.time.Clock
 import java.time.Instant
 import java.util.Locale
@@ -112,12 +110,11 @@ object BodyweightTrendCalculator {
         deltaDisplay: Double,
         weightUnit: WeightUnit,
     ): String {
-        val roundedAbs = BigDecimal.valueOf(abs(deltaDisplay))
-            .setScale(2, RoundingMode.HALF_UP)
-        if (roundedAbs.compareTo(BigDecimal.ZERO) == 0) {
+        val formattedAbs = UnitConverter.formatDecimal(abs(deltaDisplay))
+        if (formattedAbs == "0") {
             return "0 ${weightUnit.symbol}"
         }
         val sign = if (deltaDisplay > 0.0) "+" else "-"
-        return "$sign${roundedAbs.stripTrailingZeros().toPlainString()} ${weightUnit.symbol}"
+        return "$sign$formattedAbs ${weightUnit.symbol}"
     }
 }

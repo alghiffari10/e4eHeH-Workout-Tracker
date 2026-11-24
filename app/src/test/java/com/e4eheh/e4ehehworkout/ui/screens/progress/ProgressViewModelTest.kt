@@ -338,7 +338,7 @@ class ProgressViewModelTest {
             // Toggle manage entries and soft-delete the newest entry
             viewModel.onAction(ProgressAction.ToggleManageBodyweight)
             assertTrue(viewModel.uiState.value.isManageBodyweightOpen)
-            val newest = viewModel.uiState.value.bodyweightEntries.first().entry
+            val newest = viewModel.uiState.value.bodyweight.entries.first().entry
             viewModel.onAction(ProgressAction.Bodyweight(BodyweightCrudAction.RequestDelete(newest)))
             viewModel.onAction(ProgressAction.Bodyweight(BodyweightCrudAction.ConfirmDelete))
             advanceUntilIdle()

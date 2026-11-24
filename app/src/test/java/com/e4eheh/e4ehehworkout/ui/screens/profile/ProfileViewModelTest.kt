@@ -96,7 +96,7 @@ class ProfileViewModelTest {
 
             // Open create -> defaults to today's date
             viewModel.onAction(ProfileAction.Bodyweight(BodyweightCrudAction.OpenCreate))
-            assertEquals("2026-11-23", viewModel.uiState.value.bodyweightEditor?.dateText)
+            assertEquals("2026-11-23", viewModel.uiState.value.bodyweight.editor?.dateText)
 
             // Rejects future date and non-positive weight
             viewModel.onAction(ProfileAction.Bodyweight(BodyweightCrudAction.UpdateDate("2026-11-25")))
@@ -104,11 +104,11 @@ class ProfileViewModelTest {
             viewModel.onAction(ProfileAction.Bodyweight(BodyweightCrudAction.Save))
             assertEquals(
                 "Date cannot be in the future.",
-                viewModel.uiState.value.bodyweightEditor?.dateError,
+                viewModel.uiState.value.bodyweight.editor?.dateError,
             )
             assertEquals(
                 "Enter a valid bodyweight greater than 0.",
-                viewModel.uiState.value.bodyweightEditor?.weightError,
+                viewModel.uiState.value.bodyweight.editor?.weightError,
             )
 
             // Valid entry in kg
@@ -117,39 +117,49 @@ class ProfileViewModelTest {
             viewModel.onAction(ProfileAction.Bodyweight(BodyweightCrudAction.Save))
             advanceUntilIdle()
 
-            assertNull(viewModel.uiState.value.bodyweightEditor)
+            assertNull(viewModel.uiState.value.bodyweight.editor)
             val created = bodyweightRepository.observeActiveEntries().first().single()
             assertEquals(75.0, created.weightKg, 1e-6)
             assertEquals(SyncStatus.PENDING, created.syncStatus)
-            assertEquals("75 kg", viewModel.uiState.value.bodyweightEntries.single().formattedWeight)
-            assertEquals("Nov 20", viewModel.uiState.value.bodyweightEntries.single().dateLabel)
+            assertEquals("75 kg", viewModel.uiState.value.bodyweight.entries.single().formattedWeight)
+            assertEquals("Nov 20", viewModel.uiState.value.bodyweight.entries.single().dateLabel)
 
             // Switch unit to LB -> formatted display updates, canonical weightKg stays 75.0
             viewModel.onAction(ProfileAction.SelectWeightUnit(WeightUnit.LB))
             advanceUntilIdle()
-            assertEquals("165.35 lb", viewModel.uiState.value.bodyweightEntries.single().formattedWeight)
+            assertEquals("165.35 lb", viewModel.uiState.value.bodyweight.entries.single().formattedWeight)
             assertEquals(75.0, bodyweightRepository.getById(created.id)!!.weightKg, 1e-6)
 
-            // Edit in LB while keeping date -> preserves original recordedAt timestamp & converts lb -> kg
+            // Date-only edit while in LB -> preserves exact canonical 75.0 kg without rounding drift
             viewModel.onAction(ProfileAction.Bodyweight(BodyweightCrudAction.OpenEdit(created)))
-            assertEquals("165.35", viewModel.uiState.value.bodyweightEditor?.weightText)
+            assertEquals("165.35", viewModel.uiState.value.bodyweight.editor?.weightText)
+            viewModel.onAction(ProfileAction.Bodyweight(BodyweightCrudAction.UpdateDate("2026-11-19")))
+            viewModel.onAction(ProfileAction.Bodyweight(BodyweightCrudAction.Save))
+            advanceUntilIdle()
+
+            val dateEdited = bodyweightRepository.getById(created.id)!!
+            assertEquals(75.0, dateEdited.weightKg, 1e-12)
+            assertEquals("Nov 19", viewModel.uiState.value.bodyweight.entries.single().dateLabel)
+
+            // Edit weight in LB -> preserves recordedAt for same date & converts lb -> kg
+            viewModel.onAction(ProfileAction.Bodyweight(BodyweightCrudAction.OpenEdit(dateEdited)))
             viewModel.onAction(ProfileAction.Bodyweight(BodyweightCrudAction.UpdateWeight("170")))
             viewModel.onAction(ProfileAction.Bodyweight(BodyweightCrudAction.Save))
             advanceUntilIdle()
 
             val updated = bodyweightRepository.getById(created.id)!!
-            assertEquals(created.recordedAt, updated.recordedAt)
+            assertEquals(dateEdited.recordedAt, updated.recordedAt)
             assertEquals(77.1107029, updated.weightKg, 1e-5)
-            assertEquals("170 lb", viewModel.uiState.value.bodyweightEntries.single().formattedWeight)
+            assertEquals("170 lb", viewModel.uiState.value.bodyweight.entries.single().formattedWeight)
 
             // Soft-delete with confirmation -> removed from UI, tombstone kept
             viewModel.onAction(ProfileAction.Bodyweight(BodyweightCrudAction.RequestDelete(updated)))
-            assertEquals(updated.id, viewModel.uiState.value.deletingBodyweightEntry?.id)
+            assertEquals(updated.id, viewModel.uiState.value.bodyweight.deletingEntry?.id)
             viewModel.onAction(ProfileAction.Bodyweight(BodyweightCrudAction.ConfirmDelete))
             advanceUntilIdle()
 
-            assertNull(viewModel.uiState.value.deletingBodyweightEntry)
-            assertTrue(viewModel.uiState.value.bodyweightEntries.isEmpty())
+            assertNull(viewModel.uiState.value.bodyweight.deletingEntry)
+            assertTrue(viewModel.uiState.value.bodyweight.entries.isEmpty())
             val tombstone = bodyweightRepository.getById(updated.id, includeDeleted = true)
             assertNotNull(tombstone?.deletedAt)
             assertEquals(SyncStatus.PENDING, tombstone?.syncStatus)

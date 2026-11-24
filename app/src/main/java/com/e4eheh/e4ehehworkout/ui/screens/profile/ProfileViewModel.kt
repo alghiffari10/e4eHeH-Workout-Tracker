@@ -3,7 +3,6 @@ package com.e4eheh.e4ehehworkout.ui.screens.profile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.e4eheh.e4ehehworkout.domain.model.BodyweightEntry
 import com.e4eheh.e4ehehworkout.domain.model.DistanceUnit
 import com.e4eheh.e4ehehworkout.domain.model.UserPreferences
 import com.e4eheh.e4ehehworkout.domain.model.WeightUnit
@@ -11,8 +10,7 @@ import com.e4eheh.e4ehehworkout.domain.repository.BodyweightRepository
 import com.e4eheh.e4ehehworkout.domain.repository.UserPreferencesRepository
 import com.e4eheh.e4ehehworkout.ui.components.BodyweightCrudAction
 import com.e4eheh.e4ehehworkout.ui.components.BodyweightEntryCoordinator
-import com.e4eheh.e4ehehworkout.ui.components.BodyweightEntryEditorState
-import com.e4eheh.e4ehehworkout.ui.components.BodyweightEntryRowUi
+import com.e4eheh.e4ehehworkout.ui.components.BodyweightSectionState
 import java.time.Clock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -29,9 +27,7 @@ data class ProfileUiState(
     val displayNameDraft: String = UserPreferences.DEFAULT_DISPLAY_NAME,
     val displayNameError: String? = null,
     val displayNameSaved: Boolean = false,
-    val bodyweightEntries: List<BodyweightEntryRowUi> = emptyList(),
-    val bodyweightEditor: BodyweightEntryEditorState? = null,
-    val deletingBodyweightEntry: BodyweightEntry? = null,
+    val bodyweight: BodyweightSectionState = BodyweightSectionState(),
 ) {
     val hasUnsavedDisplayName: Boolean
         get() = displayNameDraft.trim() != preferences.displayName
@@ -90,11 +86,12 @@ class ProfileViewModel(
             displayNameDraft = draftOverride ?: preferences.displayName,
             displayNameError = error,
             displayNameSaved = saved,
-            bodyweightEntries = entries.map { entry ->
-                BodyweightEntryCoordinator.toRowUi(entry, preferences.weightUnit, clock)
-            },
-            bodyweightEditor = modalState.editor,
-            deletingBodyweightEntry = modalState.deletingEntry,
+            bodyweight = BodyweightEntryCoordinator.buildSectionState(
+                entries = entries,
+                modalState = modalState,
+                weightUnit = preferences.weightUnit,
+                clock = clock,
+            ),
         )
     }.stateIn(
         scope = viewModelScope,

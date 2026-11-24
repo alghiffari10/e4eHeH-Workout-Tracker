@@ -32,10 +32,9 @@ import com.e4eheh.e4ehehworkout.ui.components.ArkhamPrimaryButton
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSecondaryButton
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSectionHeader
 import com.e4eheh.e4ehehworkout.ui.components.BodyweightCrudAction
-import com.e4eheh.e4ehehworkout.ui.components.BodyweightEntryEditorDialog
+import com.e4eheh.e4ehehworkout.ui.components.BodyweightCrudDialogs
 import com.e4eheh.e4ehehworkout.ui.components.BodyweightEntryRow
 import com.e4eheh.e4ehehworkout.ui.components.BodyweightEntryRowUi
-import com.e4eheh.e4ehehworkout.ui.components.DeleteBodyweightEntryDialog
 import com.e4eheh.e4ehehworkout.ui.components.arkhamTextFieldColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamShapes
@@ -84,7 +83,7 @@ fun ProfileScreen(
         )
 
         BodyweightEntriesPanel(
-            entries = uiState.bodyweightEntries,
+            entries = uiState.bodyweight.entries,
             weightUnit = uiState.preferences.weightUnit,
             onLogEntry = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.OpenCreate)) },
             onEditEntry = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.OpenEdit(it))) },
@@ -94,30 +93,11 @@ fun ProfileScreen(
         SyncPlaceholderPanel()
     }
 
-    uiState.bodyweightEditor?.let { editorState ->
-        BodyweightEntryEditorDialog(
-            state = editorState,
-            weightUnit = uiState.preferences.weightUnit,
-            onDateChange = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.UpdateDate(it))) },
-            onWeightChange = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.UpdateWeight(it))) },
-            onDismiss = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.DismissEditor)) },
-            onSave = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.Save)) },
-        )
-    }
-
-    uiState.deletingBodyweightEntry?.let { entry ->
-        val dateLabel = uiState.bodyweightEntries
-            .firstOrNull { it.entry.id == entry.id }
-            ?.dateLabel
-            .orEmpty()
-        DeleteBodyweightEntryDialog(
-            entry = entry,
-            dateLabel = dateLabel,
-            weightUnit = uiState.preferences.weightUnit,
-            onDismiss = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.DismissDelete)) },
-            onConfirm = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.ConfirmDelete)) },
-        )
-    }
+    BodyweightCrudDialogs(
+        state = uiState.bodyweight,
+        weightUnit = uiState.preferences.weightUnit,
+        onAction = { onAction(ProfileAction.Bodyweight(it)) },
+    )
 }
 
 @Composable

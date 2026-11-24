@@ -22,8 +22,8 @@ import com.e4eheh.e4ehehworkout.domain.repository.SessionRepository
 import com.e4eheh.e4ehehworkout.domain.repository.UserPreferencesRepository
 import com.e4eheh.e4ehehworkout.ui.components.BodyweightCrudAction
 import com.e4eheh.e4ehehworkout.ui.components.BodyweightEntryCoordinator
-import com.e4eheh.e4ehehworkout.ui.components.BodyweightEntryEditorState
-import com.e4eheh.e4ehehworkout.ui.components.BodyweightEntryRowUi
+import com.e4eheh.e4ehehworkout.ui.components.BodyweightModalState
+import com.e4eheh.e4ehehworkout.ui.components.BodyweightSectionState
 import java.time.Clock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -45,10 +45,8 @@ data class ProgressUiState(
     val weightUnit: WeightUnit = WeightUnit.KG,
     val distanceUnit: DistanceUnit = DistanceUnit.KM,
     val bodyweightTrend: BodyweightTrendReport = BodyweightTrendCalculator.empty(ProgressTimeRange.ALL),
-    val bodyweightEntries: List<BodyweightEntryRowUi> = emptyList(),
+    val bodyweight: BodyweightSectionState = BodyweightSectionState(),
     val isManageBodyweightOpen: Boolean = false,
-    val bodyweightEditor: BodyweightEntryEditorState? = null,
-    val deletingBodyweightEntry: BodyweightEntry? = null,
 )
 
 /** User actions dispatched from the Progress tab. */
@@ -88,7 +86,11 @@ class ProgressViewModel(
         isManageBodyweightOpen,
         bodyweightCoordinator.modalState,
     ) { entries, manageOpen, modalState ->
-        Triple(entries, manageOpen, modalState)
+        BodyweightStateSnapshot(
+            entries = entries,
+            isManageOpen = manageOpen,
+            modalState = modalState,
+        )
     }
 
     private val controlsState = combine(
@@ -99,9 +101,7 @@ class ProgressViewModel(
         ControlsSnapshot(
             timeRange = range,
             selection = selection,
-            bodyweightEntries = bodyweight.first,
-            isManageBodyweightOpen = bodyweight.second,
-            bodyweightModal = bodyweight.third,
+            bodyweight = bodyweight,
         )
     }
 
@@ -131,15 +131,11 @@ class ProgressViewModel(
         }
 
         val bodyweightTrend = BodyweightTrendCalculator.calculate(
-            entries = controls.bodyweightEntries,
+            entries = controls.bodyweight.entries,
             timeRange = range,
             weightUnit = preferences.weightUnit,
             clock = clock,
         )
-
-        val bodyweightRows = controls.bodyweightEntries.map { entry ->
-            BodyweightEntryCoordinator.toRowUi(entry, preferences.weightUnit, clock)
-        }
 
         ProgressUiState(
             selectedTimeRange = range,
@@ -156,10 +152,13 @@ class ProgressViewModel(
             weightUnit = preferences.weightUnit,
             distanceUnit = preferences.distanceUnit,
             bodyweightTrend = bodyweightTrend,
-            bodyweightEntries = bodyweightRows,
-            isManageBodyweightOpen = controls.isManageBodyweightOpen,
-            bodyweightEditor = controls.bodyweightModal.editor,
-            deletingBodyweightEntry = controls.bodyweightModal.deletingEntry,
+            bodyweight = BodyweightEntryCoordinator.buildSectionState(
+                entries = controls.bodyweight.entries,
+                modalState = controls.bodyweight.modalState,
+                weightUnit = preferences.weightUnit,
+                clock = clock,
+            ),
+            isManageBodyweightOpen = controls.bodyweight.isManageOpen,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -214,12 +213,16 @@ class ProgressViewModel(
         val pickerDisciplineFilter: Discipline? = null,
     )
 
+    private data class BodyweightStateSnapshot(
+        val entries: List<BodyweightEntry>,
+        val isManageOpen: Boolean,
+        val modalState: BodyweightModalState,
+    )
+
     private data class ControlsSnapshot(
         val timeRange: ProgressTimeRange,
         val selection: ExerciseSelectionState,
-        val bodyweightEntries: List<BodyweightEntry>,
-        val isManageBodyweightOpen: Boolean,
-        val bodyweightModal: com.e4eheh.e4ehehworkout.ui.components.BodyweightModalState,
+        val bodyweight: BodyweightStateSnapshot,
     )
 
     class Factory(

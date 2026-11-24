@@ -35,9 +35,7 @@ import com.e4eheh.e4ehehworkout.ui.components.ArkhamHudBadge
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamHudPanel
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSectionHeader
 import com.e4eheh.e4ehehworkout.ui.components.ArkhamSegmentTab
-import com.e4eheh.e4ehehworkout.ui.components.BodyweightCrudAction
-import com.e4eheh.e4ehehworkout.ui.components.BodyweightEntryEditorDialog
-import com.e4eheh.e4ehehworkout.ui.components.DeleteBodyweightEntryDialog
+import com.e4eheh.e4ehehworkout.ui.components.BodyweightCrudDialogs
 import com.e4eheh.e4ehehworkout.ui.components.formatElapsedDuration
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryLargeStyle
@@ -83,30 +81,11 @@ fun ProgressScreen(
         )
     }
 
-    uiState.bodyweightEditor?.let { editorState ->
-        BodyweightEntryEditorDialog(
-            state = editorState,
-            weightUnit = uiState.weightUnit,
-            onDateChange = { onAction(ProgressAction.Bodyweight(BodyweightCrudAction.UpdateDate(it))) },
-            onWeightChange = { onAction(ProgressAction.Bodyweight(BodyweightCrudAction.UpdateWeight(it))) },
-            onDismiss = { onAction(ProgressAction.Bodyweight(BodyweightCrudAction.DismissEditor)) },
-            onSave = { onAction(ProgressAction.Bodyweight(BodyweightCrudAction.Save)) },
-        )
-    }
-
-    uiState.deletingBodyweightEntry?.let { entry ->
-        val dateLabel = uiState.bodyweightEntries
-            .firstOrNull { it.entry.id == entry.id }
-            ?.dateLabel
-            .orEmpty()
-        DeleteBodyweightEntryDialog(
-            entry = entry,
-            dateLabel = dateLabel,
-            weightUnit = uiState.weightUnit,
-            onDismiss = { onAction(ProgressAction.Bodyweight(BodyweightCrudAction.DismissDelete)) },
-            onConfirm = { onAction(ProgressAction.Bodyweight(BodyweightCrudAction.ConfirmDelete)) },
-        )
-    }
+    BodyweightCrudDialogs(
+        state = uiState.bodyweight,
+        weightUnit = uiState.weightUnit,
+        onAction = { onAction(ProgressAction.Bodyweight(it)) },
+    )
 }
 
 @Composable
@@ -491,7 +470,7 @@ private fun SummaryStatsSection(
 
         BodyweightTrendSection(
             report = uiState.bodyweightTrend,
-            entries = uiState.bodyweightEntries,
+            entries = uiState.bodyweight.entries,
             isManageOpen = uiState.isManageBodyweightOpen,
             onToggleManage = { onAction(ProgressAction.ToggleManageBodyweight) },
             onBodyweightAction = { onAction(ProgressAction.Bodyweight(it)) },

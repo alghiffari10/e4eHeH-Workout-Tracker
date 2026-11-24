@@ -203,8 +203,12 @@ class BodyweightEntriesAndTrendTest {
         composeTestRule.onNodeWithTag("progress_bodyweight_range_delta")
             .performScrollTo()
             .assertTextEquals("DELTA -3 kg")
-        composeTestRule.onNodeWithTag("progress_bodyweight_chart_y_max").performScrollTo().assertIsDisplayed()
-        composeTestRule.onNodeWithTag("progress_bodyweight_chart_y_min").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("progress_bodyweight_chart_y_max")
+            .performScrollTo()
+            .assertTextEquals("78.6")
+        composeTestRule.onNodeWithTag("progress_bodyweight_chart_y_min")
+            .performScrollTo()
+            .assertTextEquals("74.4")
         composeTestRule.onNodeWithTag("progress_bodyweight_chart_x_start")
             .performScrollTo()
             .assertTextEquals("Oct 10")
@@ -262,11 +266,17 @@ class BodyweightEntriesAndTrendTest {
         }
         assertEquals(listOf(74.0, 75.0, 76.0, 78.0), storedKgValues)
 
-        // Return to Progress -> Bodyweight chart updates to LB, Pull-up PR remains untouched
+        // Return to Progress -> Bodyweight chart updates to LB (axes & readout), Pull-up PR remains untouched
         composeTestRule.onNodeWithTag("nav_tab_progress").performClick()
         composeTestRule.onNodeWithTag("progress_bodyweight_chart_header")
             .performScrollTo()
             .assertTextEquals("BODYWEIGHT TREND // LB")
+        composeTestRule.onNodeWithTag("progress_bodyweight_chart_y_max")
+            .performScrollTo()
+            .assertTextEquals("165.8")
+        composeTestRule.onNodeWithTag("progress_bodyweight_chart_y_min")
+            .performScrollTo()
+            .assertTextEquals("162.6")
         composeTestRule.onNodeWithTag("progress_bodyweight_chart_readout")
             .performScrollTo()
             .assertTextContains("LATEST // Nov 23 · 163.14 lb", substring = true)

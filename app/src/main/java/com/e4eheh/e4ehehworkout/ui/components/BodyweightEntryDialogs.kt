@@ -241,3 +241,36 @@ fun DeleteBodyweightEntryDialog(
         dismissTestTag = "bodyweight_delete_cancel_button",
     )
 }
+
+/** Renders active Bodyweight Entry create/edit and delete confirmation dialogs for a BodyweightSectionState. */
+@Composable
+fun BodyweightCrudDialogs(
+    state: BodyweightSectionState,
+    weightUnit: WeightUnit,
+    onAction: (BodyweightCrudAction) -> Unit,
+) {
+    state.editor?.let { editorState ->
+        BodyweightEntryEditorDialog(
+            state = editorState,
+            weightUnit = weightUnit,
+            onDateChange = { onAction(BodyweightCrudAction.UpdateDate(it)) },
+            onWeightChange = { onAction(BodyweightCrudAction.UpdateWeight(it)) },
+            onDismiss = { onAction(BodyweightCrudAction.DismissEditor) },
+            onSave = { onAction(BodyweightCrudAction.Save) },
+        )
+    }
+
+    state.deletingEntry?.let { entry ->
+        val dateLabel = state.entries
+            .firstOrNull { it.entry.id == entry.id }
+            ?.dateLabel
+            .orEmpty()
+        DeleteBodyweightEntryDialog(
+            entry = entry,
+            dateLabel = dateLabel,
+            weightUnit = weightUnit,
+            onDismiss = { onAction(BodyweightCrudAction.DismissDelete) },
+            onConfirm = { onAction(BodyweightCrudAction.ConfirmDelete) },
+        )
+    }
+}
