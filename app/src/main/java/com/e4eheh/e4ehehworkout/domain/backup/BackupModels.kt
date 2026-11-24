@@ -9,15 +9,11 @@ data class BackupSummary(
     val routineCount: Int,
     val sessionCount: Int,
     val bodyweightEntryCount: Int,
-) {
-    val totalRecords: Int
-        get() = exerciseCount + routineCount + sessionCount + bodyweightEntryCount
-}
+)
 
 /** Result of exporting the local training database to a versioned JSON archive. */
 data class BackupExportPayload(
     val json: String,
-    val suggestedFileName: String,
     val summary: BackupSummary,
 )
 
@@ -28,8 +24,8 @@ sealed interface BackupImportResult {
     data class Failure(val reason: String) : BackupImportResult
 }
 
-/** Canonical schema version and default filename helper for JSON database backups. */
-object BackupFileNames {
+/** Schema version and default archive filename conventions for JSON database backups. */
+object BackupSpec {
     const val CURRENT_SCHEMA_VERSION = 1
 
     fun suggestedFileName(clock: Clock): String {

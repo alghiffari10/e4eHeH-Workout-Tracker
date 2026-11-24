@@ -7,7 +7,7 @@ import com.e4eheh.e4ehehworkout.data.local.RoutineExerciseEntity
 import com.e4eheh.e4ehehworkout.data.local.SessionEntity
 import com.e4eheh.e4ehehworkout.data.local.SessionExerciseEntity
 import com.e4eheh.e4ehehworkout.data.local.SessionSetEntity
-import com.e4eheh.e4ehehworkout.domain.backup.BackupFileNames
+import com.e4eheh.e4ehehworkout.domain.backup.BackupSpec
 import com.e4eheh.e4ehehworkout.domain.backup.BackupSummary
 import com.e4eheh.e4ehehworkout.domain.model.Discipline
 import com.e4eheh.e4ehehworkout.domain.model.RoutineExercise
@@ -87,10 +87,10 @@ object BackupArchiveCodec {
         }
         val schemaVersion = versionElement.content.toIntOrNull()
             ?: return BackupDecodeResult.Failure("Backup schemaVersion is missing or invalid.")
-        if (schemaVersion != BackupFileNames.CURRENT_SCHEMA_VERSION) {
+        if (schemaVersion != BackupSpec.CURRENT_SCHEMA_VERSION) {
             return BackupDecodeResult.Failure(
                 "Unsupported backup schema version $schemaVersion " +
-                    "(supported: v${BackupFileNames.CURRENT_SCHEMA_VERSION}).",
+                    "(supported: v${BackupSpec.CURRENT_SCHEMA_VERSION}).",
             )
         }
 
@@ -98,7 +98,7 @@ object BackupArchiveCodec {
             json.decodeFromJsonElement(WorkoutBackupArchive.serializer(), rootObject)
         } catch (error: SerializationException) {
             return BackupDecodeResult.Failure(
-                "Backup file does not match schema v${BackupFileNames.CURRENT_SCHEMA_VERSION}: " +
+                "Backup file does not match schema v${BackupSpec.CURRENT_SCHEMA_VERSION}: " +
                     (error.message ?: "invalid fields"),
             )
         }
@@ -277,18 +277,14 @@ object BackupArchiveCodec {
                     set.rounds?.let {
                         requireCondition(it >= 0) { "SessionSet '$setId' rounds must be non-negative." }
                     }
-                    val normalizedLoadKg = set.loadKg?.let { load ->
-                        requireCondition(load.isFinite() && load >= 0.0) {
-                            "SessionSet '$setId' loadKg must be finite and non-negative."
-                        }
-                        normalizeZeroDouble(load)
-                    }
-                    val normalizedDistanceKm = set.distanceKm?.let { distance ->
-                        requireCondition(distance.isFinite() && distance >= 0.0) {
-                            "SessionSet '$setId' distanceKm must be finite and non-negative."
-                        }
-                        normalizeZeroDouble(distance)
-                    }
+                    val normalizedLoadKg = parseFiniteNonNegativeDouble(
+                        value = set.loadKg,
+                        fieldName = "SessionSet '$setId' loadKg",
+                    )
+                    val normalizedDistanceKm = parseFiniteNonNegativeDouble(
+                        value = set.distanceKm,
+                        fieldName = "SessionSet '$setId' distanceKm",
+                    )
 
                     SessionSetEntity(
                         id = setId,
@@ -386,7 +382,13 @@ object BackupArchiveCodec {
         }
     }
 
-    private fun normalizeZeroDouble(value: Double): Double = if (value == 0.0) 0.0 else value
+    private fun parseFiniteNonNegativeDouble(value: Double?, fieldName: String): Double? {
+        if (value == null) return null
+        requireCondition(value.isFinite() && value >= 0.0) {
+            "$fieldName must be finite and non-negative."
+        }
+        return if (value == 0.0) 0.0 else value
+    }
 
     private class BackupValidationException(message: String) : IllegalArgumentException(message)
 }

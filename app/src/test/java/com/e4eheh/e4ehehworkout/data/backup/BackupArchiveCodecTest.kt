@@ -25,7 +25,6 @@ class BackupArchiveCodecTest {
         assertEquals(1, backup.summary.routineCount)
         assertEquals(1, backup.summary.sessionCount)
         assertEquals(1, backup.summary.bodyweightEntryCount)
-        assertEquals(4, backup.summary.totalRecords)
 
         val exercise = backup.exercises.single()
         assertEquals("ex-1", exercise.id)

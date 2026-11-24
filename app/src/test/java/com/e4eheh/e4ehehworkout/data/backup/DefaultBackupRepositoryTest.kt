@@ -186,7 +186,6 @@ class DefaultBackupRepositoryTest {
 
             // Export
             val exportPayload = source.backupRepo.exportBackup()
-            assertEquals("e4eheh-workout-backup-2026-11-23.json", exportPayload.suggestedFileName)
             assertEquals(4, exportPayload.summary.exerciseCount)
             assertEquals(1, exportPayload.summary.routineCount)
             assertEquals(2, exportPayload.summary.sessionCount)

@@ -3,11 +3,14 @@ package com.e4eheh.e4ehehworkout.data.backup
 import com.e4eheh.e4ehehworkout.data.local.BodyweightEntryDao
 import com.e4eheh.e4ehehworkout.data.local.ExerciseDao
 import com.e4eheh.e4ehehworkout.data.local.RoutineDao
+import com.e4eheh.e4ehehworkout.data.local.RoutineExerciseEntity
 import com.e4eheh.e4ehehworkout.data.local.SessionDao
+import com.e4eheh.e4ehehworkout.data.local.SessionExerciseEntity
+import com.e4eheh.e4ehehworkout.data.local.SessionSetEntity
 import com.e4eheh.e4ehehworkout.domain.backup.BackupExportPayload
-import com.e4eheh.e4ehehworkout.domain.backup.BackupFileNames
 import com.e4eheh.e4ehehworkout.domain.backup.BackupImportResult
 import com.e4eheh.e4ehehworkout.domain.backup.BackupRepository
+import com.e4eheh.e4ehehworkout.domain.backup.BackupSpec
 import com.e4eheh.e4ehehworkout.domain.backup.BackupSummary
 import com.e4eheh.e4ehehworkout.domain.model.SyncStatus
 import java.time.Clock
@@ -30,7 +33,7 @@ class DefaultBackupRepository(
     override suspend fun exportBackup(): BackupExportPayload = backupMutex.withLock {
         lateinit var payload: BackupExportPayload
         runInTransaction {
-            val exportedAt = nowMillis().toString()
+            val exportedAt = nowTruncatedToMillis().toString()
             val exercises = exerciseDao.getActive().map { entity ->
                 BackupExercise(
                     id = entity.id,
@@ -129,7 +132,7 @@ class DefaultBackupRepository(
             }
 
             val archive = WorkoutBackupArchive(
-                schemaVersion = BackupFileNames.CURRENT_SCHEMA_VERSION,
+                schemaVersion = BackupSpec.CURRENT_SCHEMA_VERSION,
                 exportedAt = exportedAt,
                 exercises = exercises,
                 routines = routines,
@@ -138,9 +141,8 @@ class DefaultBackupRepository(
             )
             payload = BackupExportPayload(
                 json = BackupArchiveCodec.encode(archive),
-                suggestedFileName = BackupFileNames.suggestedFileName(clock),
                 summary = BackupSummary(
-                    schemaVersion = BackupFileNames.CURRENT_SCHEMA_VERSION,
+                    schemaVersion = BackupSpec.CURRENT_SCHEMA_VERSION,
                     exerciseCount = exercises.size,
                     routineCount = routines.size,
                     sessionCount = sessions.size,
@@ -159,8 +161,7 @@ class DefaultBackupRepository(
 
         return backupMutex.withLock {
             runInTransaction {
-                val nowEpoch = nowMillis().toEpochMilli()
-                val pendingSync = SyncStatus.PENDING.name
+                val nowEpoch = nowTruncatedToMillis().toEpochMilli()
 
                 decoded.exercises.forEach { exercise ->
                     exerciseDao.upsert(exercise)
@@ -176,13 +177,7 @@ class DefaultBackupRepository(
                     val tombstonedRemovedExercises = existing?.exercises
                         .orEmpty()
                         .filter { it.deletedAt == null && it.id !in importedExerciseIds }
-                        .map { removed ->
-                            removed.copy(
-                                updatedAt = nowEpoch,
-                                deletedAt = nowEpoch,
-                                syncStatus = pendingSync,
-                            )
-                        }
+                        .map { it.tombstoned(nowEpoch) }
                     routineDao.upsertRoutineWithExercises(
                         routine = routineGraph.routine,
                         exercises = routineGraph.exercises + tombstonedRemovedExercises,
@@ -198,37 +193,22 @@ class DefaultBackupRepository(
                         .flatMap { ex -> ex.sets.map { it.id } }
                         .toSet()
 
-                    val tombstonedExercises = mutableListOf<com.e4eheh.e4ehehworkout.data.local.SessionExerciseEntity>()
-                    val tombstonedSets = mutableListOf<com.e4eheh.e4ehehworkout.data.local.SessionSetEntity>()
+                    val tombstonedExercises = mutableListOf<SessionExerciseEntity>()
+                    val tombstonedSets = mutableListOf<SessionSetEntity>()
 
                     existing?.exercises.orEmpty().forEach { existingEx ->
                         val exEntity = existingEx.sessionExercise
-                        if (exEntity.deletedAt == null && exEntity.id !in importedExerciseIds) {
-                            tombstonedExercises += exEntity.copy(
-                                updatedAt = nowEpoch,
-                                deletedAt = nowEpoch,
-                                syncStatus = pendingSync,
-                            )
-                            existingEx.sets
-                                .filter { it.deletedAt == null }
-                                .forEach { set ->
-                                    tombstonedSets += set.copy(
-                                        updatedAt = nowEpoch,
-                                        deletedAt = nowEpoch,
-                                        syncStatus = pendingSync,
-                                    )
-                                }
-                        } else if (exEntity.deletedAt == null) {
-                            existingEx.sets
-                                .filter { it.deletedAt == null && it.id !in importedSetIds }
-                                .forEach { removedSet ->
-                                    tombstonedSets += removedSet.copy(
-                                        updatedAt = nowEpoch,
-                                        deletedAt = nowEpoch,
-                                        syncStatus = pendingSync,
-                                    )
-                                }
+                        if (exEntity.deletedAt != null) return@forEach
+
+                        val exerciseRemoved = exEntity.id !in importedExerciseIds
+                        if (exerciseRemoved) {
+                            tombstonedExercises += exEntity.tombstoned(nowEpoch)
                         }
+                        existingEx.sets
+                            .filter { it.deletedAt == null && (exerciseRemoved || it.id !in importedSetIds) }
+                            .forEach { removedSet ->
+                                tombstonedSets += removedSet.tombstoned(nowEpoch)
+                            }
                     }
 
                     val importedExercises = sessionGraph.exercises.map { it.sessionExercise }
@@ -244,7 +224,25 @@ class DefaultBackupRepository(
         }
     }
 
-    private fun nowMillis(): Instant = clock.instant().truncatedTo(ChronoUnit.MILLIS)
+    private fun RoutineExerciseEntity.tombstoned(nowEpoch: Long): RoutineExerciseEntity = copy(
+        updatedAt = nowEpoch,
+        deletedAt = nowEpoch,
+        syncStatus = SyncStatus.PENDING.name,
+    )
+
+    private fun SessionExerciseEntity.tombstoned(nowEpoch: Long): SessionExerciseEntity = copy(
+        updatedAt = nowEpoch,
+        deletedAt = nowEpoch,
+        syncStatus = SyncStatus.PENDING.name,
+    )
+
+    private fun SessionSetEntity.tombstoned(nowEpoch: Long): SessionSetEntity = copy(
+        updatedAt = nowEpoch,
+        deletedAt = nowEpoch,
+        syncStatus = SyncStatus.PENDING.name,
+    )
+
+    private fun nowTruncatedToMillis(): Instant = clock.instant().truncatedTo(ChronoUnit.MILLIS)
 
     private fun formatEpochMillis(epochMillis: Long): String =
         Instant.ofEpochMilli(epochMillis).toString()

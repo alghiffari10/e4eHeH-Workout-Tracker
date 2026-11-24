@@ -3,9 +3,9 @@ package com.e4eheh.e4ehehworkout.ui.screens.profile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.e4eheh.e4ehehworkout.domain.backup.BackupFileNames
 import com.e4eheh.e4ehehworkout.domain.backup.BackupImportResult
 import com.e4eheh.e4ehehworkout.domain.backup.BackupRepository
+import com.e4eheh.e4ehehworkout.domain.backup.BackupSpec
 import com.e4eheh.e4ehehworkout.domain.backup.BackupSummary
 import com.e4eheh.e4ehehworkout.domain.model.DistanceUnit
 import com.e4eheh.e4ehehworkout.domain.model.UserPreferences
@@ -40,7 +40,6 @@ sealed interface BackupFeedback {
     data class Success(
         override val operation: BackupOperation,
         override val message: String,
-        val summary: BackupSummary,
     ) : BackupFeedback
 
     data class Error(
@@ -117,7 +116,7 @@ class ProfileViewModel(
         backupFeedback,
     ) { isBusy, feedback ->
         ProfileBackupUiState(
-            suggestedFileName = BackupFileNames.suggestedFileName(clock),
+            suggestedFileName = BackupSpec.suggestedFileName(clock),
             isBusy = isBusy,
             feedback = feedback,
         )
@@ -153,7 +152,7 @@ class ProfileViewModel(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = ProfileUiState(
             backup = ProfileBackupUiState(
-                suggestedFileName = BackupFileNames.suggestedFileName(clock),
+                suggestedFileName = BackupSpec.suggestedFileName(clock),
             ),
         ),
     )
@@ -203,63 +202,57 @@ class ProfileViewModel(
     }
 
     private fun exportBackup(writeJson: suspend (String) -> Unit) {
-        if (backupBusy.value) return
-        backupBusy.value = true
-        backupFeedback.value = null
-        viewModelScope.launch {
-            try {
-                val payload = backupRepository.exportBackup()
-                writeJson(payload.json)
-                backupFeedback.value = BackupFeedback.Success(
-                    operation = BackupOperation.EXPORT,
-                    message = "Exported ${formatSummaryCounts(payload.summary)} " +
-                        "(JSON v${payload.summary.schemaVersion}).",
-                    summary = payload.summary,
-                )
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                backupFeedback.value = BackupFeedback.Error(
-                    operation = BackupOperation.EXPORT,
-                    message = error.message?.takeIf { it.isNotBlank() }
-                        ?: "Failed to write backup file.",
-                )
-            } finally {
-                backupBusy.value = false
-            }
+        runBackupOperation(
+            operation = BackupOperation.EXPORT,
+            fallbackErrorMessage = "Failed to write backup file.",
+        ) {
+            val payload = backupRepository.exportBackup()
+            writeJson(payload.json)
+            BackupFeedback.Success(
+                operation = BackupOperation.EXPORT,
+                message = "Exported ${formatSummaryCounts(payload.summary)} " +
+                    "(JSON v${payload.summary.schemaVersion}).",
+            )
         }
     }
 
     private fun importBackup(readJson: suspend () -> String) {
+        runBackupOperation(
+            operation = BackupOperation.IMPORT,
+            fallbackErrorMessage = "Failed to read backup file.",
+        ) {
+            val rawJson = readJson()
+            when (val result = backupRepository.importBackup(rawJson)) {
+                is BackupImportResult.Success -> BackupFeedback.Success(
+                    operation = BackupOperation.IMPORT,
+                    message = "Restored ${formatSummaryCounts(result.summary)} " +
+                        "(JSON v${result.summary.schemaVersion}).",
+                )
+                is BackupImportResult.Failure -> BackupFeedback.Error(
+                    operation = BackupOperation.IMPORT,
+                    message = result.reason,
+                )
+            }
+        }
+    }
+
+    private fun runBackupOperation(
+        operation: BackupOperation,
+        fallbackErrorMessage: String,
+        block: suspend () -> BackupFeedback,
+    ) {
         if (backupBusy.value) return
         backupBusy.value = true
         backupFeedback.value = null
         viewModelScope.launch {
             try {
-                val rawJson = readJson()
-                when (val result = backupRepository.importBackup(rawJson)) {
-                    is BackupImportResult.Success -> {
-                        backupFeedback.value = BackupFeedback.Success(
-                            operation = BackupOperation.IMPORT,
-                            message = "Restored ${formatSummaryCounts(result.summary)} " +
-                                "(JSON v${result.summary.schemaVersion}).",
-                            summary = result.summary,
-                        )
-                    }
-                    is BackupImportResult.Failure -> {
-                        backupFeedback.value = BackupFeedback.Error(
-                            operation = BackupOperation.IMPORT,
-                            message = result.reason,
-                        )
-                    }
-                }
+                backupFeedback.value = block()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 backupFeedback.value = BackupFeedback.Error(
-                    operation = BackupOperation.IMPORT,
-                    message = error.message?.takeIf { it.isNotBlank() }
-                        ?: "Failed to read backup file.",
+                    operation = operation,
+                    message = error.message?.takeIf { it.isNotBlank() } ?: fallbackErrorMessage,
                 )
             } finally {
                 backupBusy.value = false
