@@ -1,5 +1,10 @@
 package com.e4eheh.e4ehehworkout.ui.screens.profile
 
+import android.content.ContentResolver
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,10 +19,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -41,6 +48,8 @@ import com.e4eheh.e4ehehworkout.ui.theme.ArkhamShapes
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryLargeStyle
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryStyle
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private val REST_TIMER_PRESETS = listOf(30, 60, 90, 120, 180)
 
@@ -51,6 +60,34 @@ fun ProfileScreen(
     onAction: (ProfileAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val createDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            onAction(
+                ProfileAction.ExportBackup { json ->
+                    withContext(Dispatchers.IO) {
+                        writeUtf8Document(context.contentResolver, uri, json)
+                    }
+                },
+            )
+        }
+    }
+    val openDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            onAction(
+                ProfileAction.ImportBackup {
+                    withContext(Dispatchers.IO) {
+                        readUtf8Document(context.contentResolver, uri)
+                    }
+                },
+            )
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -88,6 +125,15 @@ fun ProfileScreen(
             onLogEntry = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.OpenCreate)) },
             onEditEntry = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.OpenEdit(it))) },
             onDeleteEntry = { onAction(ProfileAction.Bodyweight(BodyweightCrudAction.RequestDelete(it))) },
+        )
+
+        BackupRestorePanel(
+            backupState = uiState.backup,
+            onExportClick = { createDocumentLauncher.launch(uiState.backup.suggestedFileName) },
+            onImportClick = {
+                openDocumentLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+            },
+            onDismissFeedback = { onAction(ProfileAction.DismissBackupFeedback) },
         )
 
         SyncPlaceholderPanel()
@@ -338,6 +384,140 @@ private fun BodyweightEntriesPanel(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun BackupRestorePanel(
+    backupState: ProfileBackupUiState,
+    onExportClick: () -> Unit,
+    onImportClick: () -> Unit,
+    onDismissFeedback: () -> Unit,
+) {
+    ArkhamHudPanel(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("profile_backup_panel"),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "LOCAL DATABASE BACKUP",
+                    style = ArkhamTelemetryStyle,
+                    color = ArkhamColors.PhosphorGreenDim,
+                )
+                ArkhamHudBadge(label = "JSON v1")
+            }
+            Text(
+                text = "Export all non-deleted Exercises, Routines, Sessions, and Bodyweight Entries to a portable JSON archive, or restore a backup onto this device.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = ArkhamColors.MintMuted,
+            )
+            ArkhamPrimaryButton(
+                text = "Export Backup (JSON)",
+                enabled = !backupState.isBusy,
+                onClick = onExportClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("profile_export_backup_button"),
+            )
+            ArkhamSecondaryButton(
+                text = "Import / Restore Backup (JSON)",
+                enabled = !backupState.isBusy,
+                onClick = onImportClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("profile_import_backup_button"),
+            )
+            if (backupState.isBusy) {
+                Text(
+                    text = "PROCESSING LOCAL VAULT BACKUP...",
+                    style = ArkhamTelemetryStyle,
+                    color = ArkhamColors.PhosphorGreen,
+                    modifier = Modifier.testTag("profile_backup_busy_indicator"),
+                )
+            }
+            backupState.feedback?.let { feedback ->
+                val isSuccess = feedback is BackupFeedback.Success
+                val accentColor = if (isSuccess) ArkhamColors.PhosphorGreen else ArkhamColors.AlertRed
+                val headerLabel = when (feedback) {
+                    is BackupFeedback.Success -> when (feedback.operation) {
+                        BackupOperation.EXPORT -> "BACKUP EXPORTED"
+                        BackupOperation.IMPORT -> "BACKUP RESTORED"
+                    }
+                    is BackupFeedback.Error -> when (feedback.operation) {
+                        BackupOperation.EXPORT -> "EXPORT FAILED"
+                        BackupOperation.IMPORT -> "RESTORE FAILED"
+                    }
+                }
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("profile_backup_feedback"),
+                    shape = ArkhamShapes.chip,
+                    color = accentColor.copy(alpha = 0.08f),
+                    border = BorderStroke(1.dp, accentColor),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = headerLabel,
+                                style = ArkhamTelemetryStyle,
+                                color = accentColor,
+                            )
+                            ArkhamSecondaryButton(
+                                text = "Dismiss",
+                                onClick = onDismissFeedback,
+                                borderColor = accentColor,
+                                contentColor = ArkhamColors.MintWhite,
+                                modifier = Modifier.testTag("profile_backup_feedback_dismiss"),
+                            )
+                        }
+                        Text(
+                            text = feedback.message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = ArkhamColors.MintWhite,
+                            modifier = Modifier.testTag("profile_backup_feedback_message"),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun writeUtf8Document(
+    contentResolver: ContentResolver,
+    uri: Uri,
+    json: String,
+) {
+    val output = contentResolver.openOutputStream(uri, "wt")
+        ?: contentResolver.openOutputStream(uri)
+        ?: error("Unable to open destination file for writing.")
+    output.bufferedWriter(Charsets.UTF_8).use { writer ->
+        writer.write(json)
+    }
+}
+
+private fun readUtf8Document(
+    contentResolver: ContentResolver,
+    uri: Uri,
+): String {
+    val input = contentResolver.openInputStream(uri)
+        ?: error("Unable to open selected backup file.")
+    return input.bufferedReader(Charsets.UTF_8).use { reader ->
+        reader.readText()
     }
 }
 

@@ -16,23 +16,27 @@ class InMemoryRoutineDao : RoutineDao {
     private val state = MutableStateFlow(StorageState())
 
     override fun observeActiveWithExercises(): Flow<List<RoutineWithExercises>> =
-        state.map { current ->
-            val exercisesByRoutine = current.routineExercises.values.groupBy { it.routineId }
-            current.routines.values
-                .filter { it.deletedAt == null }
-                .sortedWith(
-                    compareBy<RoutineEntity>(
-                        { it.name.lowercase(Locale.ROOT) },
-                        { it.createdAt },
-                    )
+        state.map(::activeSorted)
+
+    override suspend fun getActiveWithExercises(): List<RoutineWithExercises> = activeSorted(state.value)
+
+    private fun activeSorted(current: StorageState): List<RoutineWithExercises> {
+        val exercisesByRoutine = current.routineExercises.values.groupBy { it.routineId }
+        return current.routines.values
+            .filter { it.deletedAt == null }
+            .sortedWith(
+                compareBy<RoutineEntity>(
+                    { it.name.lowercase(Locale.ROOT) },
+                    { it.createdAt },
+                ),
+            )
+            .map { routine ->
+                RoutineWithExercises(
+                    routine = routine,
+                    exercises = exercisesByRoutine[routine.id].orEmpty(),
                 )
-                .map { routine ->
-                    RoutineWithExercises(
-                        routine = routine,
-                        exercises = exercisesByRoutine[routine.id].orEmpty(),
-                    )
-                }
-        }
+            }
+    }
 
     override suspend fun getWithExercisesById(id: String): RoutineWithExercises? {
         val current = state.value

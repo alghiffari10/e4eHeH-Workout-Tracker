@@ -193,6 +193,7 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
                             factory = ProfileViewModel.Factory(
                                 userPreferencesRepository = appContainer.userPreferencesRepository,
                                 bodyweightRepository = appContainer.bodyweightRepository,
+                                backupRepository = appContainer.backupRepository,
                                 clock = appContainer.clock,
                             ),
                         )

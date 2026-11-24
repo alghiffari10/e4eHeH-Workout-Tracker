@@ -1,15 +1,24 @@
 package com.e4eheh.e4ehehworkout.ui.screens.profile
 
+import com.e4eheh.e4ehehworkout.data.backup.DefaultBackupRepository
 import com.e4eheh.e4ehehworkout.data.local.InMemoryBodyweightEntryDao
+import com.e4eheh.e4ehehworkout.data.local.InMemoryExerciseDao
+import com.e4eheh.e4ehehworkout.data.local.InMemoryRoutineDao
+import com.e4eheh.e4ehehworkout.data.local.InMemorySessionDao
 import com.e4eheh.e4ehehworkout.data.local.InMemoryUserPreferencesDao
 import com.e4eheh.e4ehehworkout.data.repository.DefaultBodyweightRepository
+import com.e4eheh.e4ehehworkout.data.repository.DefaultExerciseRepository
 import com.e4eheh.e4ehehworkout.data.repository.DefaultUserPreferencesRepository
+import com.e4eheh.e4ehehworkout.domain.model.Discipline
 import com.e4eheh.e4ehehworkout.domain.model.DistanceUnit
+import com.e4eheh.e4ehehworkout.domain.model.ExerciseInput
 import com.e4eheh.e4ehehworkout.domain.model.SyncStatus
+import com.e4eheh.e4ehehworkout.domain.model.TrackingMode
 import com.e4eheh.e4ehehworkout.domain.model.UserPreferences
 import com.e4eheh.e4ehehworkout.domain.model.WeightUnit
 import com.e4eheh.e4ehehworkout.testing.FakeClock
 import com.e4eheh.e4ehehworkout.ui.components.BodyweightCrudAction
+import java.io.IOException
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -34,7 +43,19 @@ class ProfileViewModelTest {
     private val clock = FakeClock(initialInstant = Instant.parse("2026-11-23T08:00:00Z"))
     private val dao = InMemoryUserPreferencesDao()
     private val repository = DefaultUserPreferencesRepository(dao, clock)
-    private val bodyweightRepository = DefaultBodyweightRepository(InMemoryBodyweightEntryDao(), clock)
+    private val exerciseDao = InMemoryExerciseDao()
+    private val routineDao = InMemoryRoutineDao()
+    private val sessionDao = InMemorySessionDao()
+    private val bodyweightDao = InMemoryBodyweightEntryDao()
+    private val exerciseRepository = DefaultExerciseRepository(exerciseDao, clock)
+    private val bodyweightRepository = DefaultBodyweightRepository(bodyweightDao, clock)
+    private val backupRepository = DefaultBackupRepository(
+        exerciseDao = exerciseDao,
+        routineDao = routineDao,
+        sessionDao = sessionDao,
+        bodyweightEntryDao = bodyweightDao,
+        clock = clock,
+    )
 
     @Before
     fun setUp() {
@@ -49,6 +70,7 @@ class ProfileViewModelTest {
     private fun createViewModel(): ProfileViewModel = ProfileViewModel(
         userPreferencesRepository = repository,
         bodyweightRepository = bodyweightRepository,
+        backupRepository = backupRepository,
         clock = clock,
     )
 
@@ -163,6 +185,71 @@ class ProfileViewModelTest {
             val tombstone = bodyweightRepository.getById(updated.id, includeDeleted = true)
             assertNotNull(tombstone?.deletedAt)
             assertEquals(SyncStatus.PENDING, tombstone?.syncStatus)
+
+            collectorJob.cancel()
+        }
+
+    @Test
+    fun backupExportAndImport_updatesFeedbackOnSuccess_validationFailure_ioFailure_andDismiss() =
+        runTest(testDispatcher) {
+            val created = exerciseRepository.create(
+                ExerciseInput("Pull-up", Discipline.CALISTHENICS, TrackingMode.REPS_AND_LOAD),
+            )
+            val viewModel = createViewModel()
+            val collectorJob = backgroundScope.launch { viewModel.uiState.collect {} }
+            advanceUntilIdle()
+
+            assertEquals("e4eheh-workout-backup-2026-11-23.json", viewModel.uiState.value.backup.suggestedFileName)
+
+            // Export success
+            var exportedJson = ""
+            viewModel.onAction(
+                ProfileAction.ExportBackup { json -> exportedJson = json },
+            )
+            advanceUntilIdle()
+
+            val exportFeedback = viewModel.uiState.value.backup.feedback as? BackupFeedback.Success
+            assertNotNull(exportFeedback)
+            assertEquals(BackupOperation.EXPORT, exportFeedback!!.operation)
+            assertTrue(exportFeedback.message.contains("1 Exercise"))
+            assertTrue(exportedJson.contains(created.id))
+
+            // Export I/O failure
+            viewModel.onAction(
+                ProfileAction.ExportBackup { throw IOException("Disk full") },
+            )
+            advanceUntilIdle()
+            val exportError = viewModel.uiState.value.backup.feedback as? BackupFeedback.Error
+            assertNotNull(exportError)
+            assertEquals(BackupOperation.EXPORT, exportError!!.operation)
+            assertEquals("Disk full", exportError.message)
+
+            // Import invalid JSON
+            viewModel.onAction(ProfileAction.ImportBackup { "{invalid" })
+            advanceUntilIdle()
+            val importInvalid = viewModel.uiState.value.backup.feedback as? BackupFeedback.Error
+            assertNotNull(importInvalid)
+            assertEquals(BackupOperation.IMPORT, importInvalid!!.operation)
+
+            // Import I/O failure
+            viewModel.onAction(ProfileAction.ImportBackup { throw IOException("Permission denied") })
+            advanceUntilIdle()
+            val importIoError = viewModel.uiState.value.backup.feedback as? BackupFeedback.Error
+            assertNotNull(importIoError)
+            assertEquals("Permission denied", importIoError!!.message)
+
+            // Import valid JSON
+            viewModel.onAction(ProfileAction.ImportBackup { exportedJson })
+            advanceUntilIdle()
+            val importSuccess = viewModel.uiState.value.backup.feedback as? BackupFeedback.Success
+            assertNotNull(importSuccess)
+            assertEquals(BackupOperation.IMPORT, importSuccess!!.operation)
+            assertTrue(importSuccess.message.contains("1 Exercise"))
+
+            // Dismiss feedback
+            viewModel.onAction(ProfileAction.DismissBackupFeedback)
+            advanceUntilIdle()
+            assertNull(viewModel.uiState.value.backup.feedback)
 
             collectorJob.cancel()
         }

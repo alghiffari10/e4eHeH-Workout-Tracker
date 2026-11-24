@@ -10,16 +10,19 @@ class InMemoryExerciseDao : ExerciseDao {
     private val records = MutableStateFlow<Map<String, ExerciseEntity>>(emptyMap())
 
     override fun observeActive(): Flow<List<ExerciseEntity>> =
-        records.map { entries ->
-            entries.values
-                .filter { it.deletedAt == null }
-                .sortedWith(
-                    compareBy<ExerciseEntity>(
-                        { it.name.lowercase(Locale.ROOT) },
-                        { it.createdAt },
-                    )
-                )
-        }
+        records.map(::activeSorted)
+
+    override suspend fun getActive(): List<ExerciseEntity> = activeSorted(records.value)
+
+    private fun activeSorted(entries: Map<String, ExerciseEntity>): List<ExerciseEntity> =
+        entries.values
+            .filter { it.deletedAt == null }
+            .sortedWith(
+                compareBy<ExerciseEntity>(
+                    { it.name.lowercase(Locale.ROOT) },
+                    { it.createdAt },
+                ),
+            )
 
     override suspend fun getById(id: String): ExerciseEntity? = records.value[id]
 

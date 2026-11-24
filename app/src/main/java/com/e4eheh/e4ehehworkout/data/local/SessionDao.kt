@@ -14,6 +14,10 @@ interface SessionDao {
     fun observeActiveWithExercises(): Flow<List<SessionWithExercises>>
 
     @Transaction
+    @Query("SELECT * FROM sessions WHERE deletedAt IS NULL ORDER BY startedAt DESC, createdAt DESC")
+    suspend fun getActiveWithExercises(): List<SessionWithExercises>
+
+    @Transaction
     @Query("SELECT * FROM sessions WHERE id = :id AND deletedAt IS NULL LIMIT 1")
     fun observeWithExercisesById(id: String): Flow<SessionWithExercises?>
 

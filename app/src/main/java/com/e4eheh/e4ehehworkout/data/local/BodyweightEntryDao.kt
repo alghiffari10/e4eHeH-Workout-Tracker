@@ -11,6 +11,9 @@ interface BodyweightEntryDao {
     @Query("SELECT * FROM bodyweight_entries WHERE deletedAt IS NULL ORDER BY recordedAt DESC, createdAt DESC")
     fun observeActive(): Flow<List<BodyweightEntryEntity>>
 
+    @Query("SELECT * FROM bodyweight_entries WHERE deletedAt IS NULL ORDER BY recordedAt DESC, createdAt DESC")
+    suspend fun getActive(): List<BodyweightEntryEntity>
+
     @Query("SELECT * FROM bodyweight_entries WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): BodyweightEntryEntity?
 

@@ -16,15 +16,18 @@ class InMemorySessionDao : SessionDao {
     private val state = MutableStateFlow(StorageState())
 
     override fun observeActiveWithExercises(): Flow<List<SessionWithExercises>> =
-        state.map { current ->
-            current.sessions.values
-                .filter { it.deletedAt == null }
-                .sortedWith(
-                    compareByDescending<SessionEntity> { it.startedAt }
-                        .thenByDescending { it.createdAt }
-                )
-                .map { session -> buildGraph(current, session) }
-        }
+        state.map(::activeSorted)
+
+    override suspend fun getActiveWithExercises(): List<SessionWithExercises> = activeSorted(state.value)
+
+    private fun activeSorted(current: StorageState): List<SessionWithExercises> =
+        current.sessions.values
+            .filter { it.deletedAt == null }
+            .sortedWith(
+                compareByDescending<SessionEntity> { it.startedAt }
+                    .thenByDescending { it.createdAt },
+            )
+            .map { session -> buildGraph(current, session) }
 
     override fun observeWithExercisesById(id: String): Flow<SessionWithExercises?> =
         state.map { current ->

@@ -9,14 +9,17 @@ class InMemoryBodyweightEntryDao : BodyweightEntryDao {
     private val records = MutableStateFlow<Map<String, BodyweightEntryEntity>>(emptyMap())
 
     override fun observeActive(): Flow<List<BodyweightEntryEntity>> =
-        records.map { entries ->
-            entries.values
-                .filter { it.deletedAt == null }
-                .sortedWith(
-                    compareByDescending<BodyweightEntryEntity> { it.recordedAt }
-                        .thenByDescending { it.createdAt },
-                )
-        }
+        records.map(::activeSorted)
+
+    override suspend fun getActive(): List<BodyweightEntryEntity> = activeSorted(records.value)
+
+    private fun activeSorted(entries: Map<String, BodyweightEntryEntity>): List<BodyweightEntryEntity> =
+        entries.values
+            .filter { it.deletedAt == null }
+            .sortedWith(
+                compareByDescending<BodyweightEntryEntity> { it.recordedAt }
+                    .thenByDescending { it.createdAt },
+            )
 
     override suspend fun getById(id: String): BodyweightEntryEntity? = records.value[id]
 
