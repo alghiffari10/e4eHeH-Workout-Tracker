@@ -1,10 +1,21 @@
 package com.e4eheh.e4ehehworkout.ui.screens.progress
 
+import com.e4eheh.e4ehehworkout.data.local.InMemoryExerciseDao
 import com.e4eheh.e4ehehworkout.data.local.InMemorySessionDao
+import com.e4eheh.e4ehehworkout.data.local.InMemoryUserPreferencesDao
+import com.e4eheh.e4ehehworkout.data.repository.DefaultExerciseRepository
 import com.e4eheh.e4ehehworkout.data.repository.DefaultSessionRepository
+import com.e4eheh.e4ehehworkout.data.repository.DefaultUserPreferencesRepository
 import com.e4eheh.e4ehehworkout.domain.analytics.ProgressTimeRange
+import com.e4eheh.e4ehehworkout.domain.analytics.ProgressionMetric
 import com.e4eheh.e4ehehworkout.domain.model.Discipline
+import com.e4eheh.e4ehehworkout.domain.model.DistanceUnit
+import com.e4eheh.e4ehehworkout.domain.model.ExerciseInput
 import com.e4eheh.e4ehehworkout.domain.model.SessionDraftInput
+import com.e4eheh.e4ehehworkout.domain.model.SessionExerciseDraftInput
+import com.e4eheh.e4ehehworkout.domain.model.SessionSetDraftInput
+import com.e4eheh.e4ehehworkout.domain.model.TrackingMode
+import com.e4eheh.e4ehehworkout.domain.model.WeightUnit
 import com.e4eheh.e4ehehworkout.testing.FakeClock
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +28,9 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -25,6 +39,9 @@ class ProgressViewModelTest {
     private val testDispatcher = UnconfinedTestDispatcher()
     private val clock = FakeClock(initialInstant = Instant.parse("2026-11-23T08:00:00Z"))
     private val sessionRepository = DefaultSessionRepository(InMemorySessionDao(), clock)
+    private val exerciseRepository = DefaultExerciseRepository(InMemoryExerciseDao(), clock)
+    private val userPreferencesRepository =
+        DefaultUserPreferencesRepository(InMemoryUserPreferencesDao(), clock)
 
     @Before
     fun setUp() {
@@ -38,11 +55,13 @@ class ProgressViewModelTest {
 
     private fun createViewModel(): ProgressViewModel = ProgressViewModel(
         sessionRepository = sessionRepository,
+        exerciseRepository = exerciseRepository,
+        userPreferencesRepository = userPreferencesRepository,
         clock = clock,
     )
 
     @Test
-    fun initialState_defaultsToAllWithEmptyAnalytics() = runTest(testDispatcher) {
+    fun initialState_defaultsToAllWithEmptyAnalyticsAndNoExerciseSelected() = runTest(testDispatcher) {
         val viewModel = createViewModel()
         val collector = backgroundScope.launch { viewModel.uiState.collect {} }
         advanceUntilIdle()
@@ -54,6 +73,10 @@ class ProgressViewModelTest {
         assertEquals(0L, state.analytics.totalDurationSeconds)
         assertEquals(Discipline.entries.size, state.analytics.disciplineBreakdown.size)
         assertEquals(0, state.analytics.disciplineBreakdown.sumOf { it.sessionCount })
+        assertTrue(state.exercises.isEmpty())
+        assertNull(state.selectedExerciseId)
+        assertNull(state.exerciseProgression)
+        assertFalse(state.isExercisePickerOpen)
 
         collector.cancel()
     }
@@ -139,6 +162,123 @@ class ProgressViewModelTest {
             advanceUntilIdle()
             assertEquals(3, viewModel.uiState.value.analytics.totalCompletedSessions)
             assertEquals(5_400L, viewModel.uiState.value.analytics.totalDurationSeconds)
+
+            collector.cancel()
+        }
+
+    @Test
+    fun exerciseProgression_autoSelectsRecentExercise_switchesMetrics_andReactsToUnitAndRangeChanges() =
+        runTest(testDispatcher) {
+            val bench = exerciseRepository.create(
+                ExerciseInput(
+                    name = "Bench Press",
+                    discipline = Discipline.WEIGHT_LIFTING,
+                    trackingMode = TrackingMode.REPS_AND_LOAD,
+                ),
+            )
+            val run = exerciseRepository.create(
+                ExerciseInput(
+                    name = "5K Run",
+                    discipline = Discipline.CARDIO,
+                    trackingMode = TrackingMode.DISTANCE_AND_TIME,
+                ),
+            )
+
+            // Older run (outside 1W)
+            sessionRepository.createCompletedSession(
+                startedAt = Instant.parse("2026-11-01T07:00:00Z"),
+                durationSeconds = 1_500L,
+                input = SessionDraftInput(
+                    title = "Morning Run",
+                    discipline = Discipline.CARDIO,
+                    exercises = listOf(
+                        SessionExerciseDraftInput(
+                            exerciseId = run.id,
+                            exerciseName = run.name,
+                            exerciseDiscipline = run.discipline,
+                            trackingMode = run.trackingMode,
+                            sets = listOf(
+                                SessionSetDraftInput(
+                                    distanceKm = 5.0,
+                                    durationSeconds = 1_500,
+                                    isCompleted = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            )
+            // Newer bench (inside 1W)
+            sessionRepository.createCompletedSession(
+                startedAt = Instant.parse("2026-11-22T07:00:00Z"),
+                durationSeconds = 2_400L,
+                input = SessionDraftInput(
+                    title = "Heavy Upper",
+                    discipline = Discipline.WEIGHT_LIFTING,
+                    exercises = listOf(
+                        SessionExerciseDraftInput(
+                            exerciseId = bench.id,
+                            exerciseName = bench.name,
+                            exerciseDiscipline = bench.discipline,
+                            trackingMode = bench.trackingMode,
+                            sets = listOf(
+                                SessionSetDraftInput(
+                                    reps = 5,
+                                    loadKg = 100.0,
+                                    isCompleted = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            )
+
+            val viewModel = createViewModel()
+            val collector = backgroundScope.launch { viewModel.uiState.collect {} }
+            advanceUntilIdle()
+
+            // Defaults to most recently logged Exercise (Bench Press)
+            assertEquals(bench.id, viewModel.uiState.value.selectedExerciseId)
+            assertEquals(ProgressionMetric.TOTAL_VOLUME, viewModel.uiState.value.exerciseProgression?.selectedMetric)
+            assertEquals(
+                "500 kg",
+                viewModel.uiState.value.exerciseProgression?.personalRecords
+                    ?.first { it.metric == ProgressionMetric.TOTAL_VOLUME }
+                    ?.formattedValue,
+            )
+
+            // Toggle metric to MAX_LOAD
+            viewModel.onAction(ProgressAction.SelectProgressionMetric(ProgressionMetric.MAX_LOAD))
+            assertEquals(ProgressionMetric.MAX_LOAD, viewModel.uiState.value.exerciseProgression?.selectedMetric)
+            assertEquals("100 kg", viewModel.uiState.value.exerciseProgression?.chartPoints?.single()?.formattedValue)
+
+            // Switch WeightUnit to LB -> updates PRs & chart points immediately
+            userPreferencesRepository.updateWeightUnit(WeightUnit.LB)
+            advanceUntilIdle()
+            assertEquals("220.46 lb", viewModel.uiState.value.exerciseProgression?.chartPoints?.single()?.formattedValue)
+
+            // Open picker, filter by Cardio, select 5K Run -> resets metric to DISTANCE and closes picker
+            viewModel.onAction(ProgressAction.OpenExercisePicker)
+            assertTrue(viewModel.uiState.value.isExercisePickerOpen)
+            viewModel.onAction(ProgressAction.SelectPickerDisciplineFilter(Discipline.CARDIO))
+            assertEquals(Discipline.CARDIO, viewModel.uiState.value.pickerDisciplineFilter)
+            viewModel.onAction(ProgressAction.SelectExercise(run.id))
+            assertFalse(viewModel.uiState.value.isExercisePickerOpen)
+            assertEquals(run.id, viewModel.uiState.value.selectedExerciseId)
+            assertEquals(ProgressionMetric.DISTANCE, viewModel.uiState.value.exerciseProgression?.selectedMetric)
+
+            // Toggle to PACE and switch DistanceUnit to MI
+            viewModel.onAction(ProgressAction.SelectProgressionMetric(ProgressionMetric.PACE))
+            userPreferencesRepository.updateDistanceUnit(DistanceUnit.MI)
+            advanceUntilIdle()
+            assertEquals("08:03 /mi", viewModel.uiState.value.exerciseProgression?.chartPoints?.single()?.formattedValue)
+
+            // Switch to 1W -> chart empty for Nov 1 run, but all-time PR remains
+            viewModel.onAction(ProgressAction.SelectTimeRange(ProgressTimeRange.ONE_WEEK))
+            val runOneWeek = viewModel.uiState.value.exerciseProgression!!
+            assertTrue(runOneWeek.chartPoints.isEmpty())
+            assertTrue(runOneWeek.hasAnyAllTimeHistory)
+            assertEquals("08:03 /mi", runOneWeek.personalRecords.first { it.metric == ProgressionMetric.PACE }.formattedValue)
 
             collector.cancel()
         }

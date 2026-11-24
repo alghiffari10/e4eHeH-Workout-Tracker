@@ -117,4 +117,32 @@ class UnitConverterTest {
         assertEquals("3.11", UnitConverter.formatDistanceValue(5.0, DistanceUnit.MI))
         assertEquals("0", UnitConverter.formatDistanceValue(0.0, DistanceUnit.MI))
     }
+
+    @Test
+    fun paceToDisplaySecondsPerUnit_andFormatPace_convertAndFormatAccurately() {
+        assertEquals(300.0, UnitConverter.paceToDisplaySecondsPerUnit(300.0, DistanceUnit.KM), 0.0)
+        assertEquals(482.8032, UnitConverter.paceToDisplaySecondsPerUnit(300.0, DistanceUnit.MI), 1e-6)
+
+        assertEquals("05:00", UnitConverter.formatPaceValue(300.0, DistanceUnit.KM))
+        assertEquals("05:00 /km", UnitConverter.formatPace(300.0, DistanceUnit.KM))
+        assertEquals("08:03", UnitConverter.formatPaceValue(300.0, DistanceUnit.MI))
+        assertEquals("08:03 /mi", UnitConverter.formatPace(300.0, DistanceUnit.MI))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun paceToDisplaySecondsPerUnit_rejectsZero() {
+        UnitConverter.paceToDisplaySecondsPerUnit(0.0, DistanceUnit.KM)
+    }
+
+    @Test
+    fun formatDurationClock_andFormatDecimal_formatMonospaceValuesCleanly() {
+        assertEquals("00:45", UnitConverter.formatDurationClock(45L))
+        assertEquals("01:15", UnitConverter.formatDurationClock(75L))
+        assertEquals("01:01:05", UnitConverter.formatDurationClock(3_665L))
+        assertEquals("00:00", UnitConverter.formatDurationClock(-10L))
+
+        assertEquals("120", UnitConverter.formatDecimal(120.0, maxDecimals = 1))
+        assertEquals("12.5", UnitConverter.formatDecimal(12.54, maxDecimals = 1))
+        assertEquals("3.11", UnitConverter.formatDecimal(3.1068, maxDecimals = 2))
+    }
 }

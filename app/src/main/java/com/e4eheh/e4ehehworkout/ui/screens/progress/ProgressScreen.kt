@@ -69,6 +69,11 @@ fun ProgressScreen(
 
         ConsistencySection(analytics = analytics)
 
+        ExerciseProgressionSection(
+            uiState = uiState,
+            onAction = onAction,
+        )
+
         SummaryStatsSection(analytics = analytics)
     }
 }

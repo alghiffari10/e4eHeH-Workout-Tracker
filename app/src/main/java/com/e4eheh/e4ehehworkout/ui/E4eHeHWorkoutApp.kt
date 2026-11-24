@@ -176,6 +176,8 @@ fun E4eHeHWorkoutApp(appContainer: AppContainer) {
                         val viewModel: ProgressViewModel = viewModel(
                             factory = ProgressViewModel.Factory(
                                 sessionRepository = appContainer.sessionRepository,
+                                exerciseRepository = appContainer.exerciseRepository,
+                                userPreferencesRepository = appContainer.userPreferencesRepository,
                                 clock = appContainer.clock,
                             ),
                         )

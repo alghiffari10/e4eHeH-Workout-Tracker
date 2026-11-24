@@ -4,6 +4,8 @@ import com.e4eheh.e4ehehworkout.domain.model.DistanceUnit
 import com.e4eheh.e4ehehworkout.domain.model.WeightUnit
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.util.Locale
+import kotlin.math.roundToLong
 
 /**
  * Pure canonical unit conversion boundary between stored metric values (`kg`, `km`)
@@ -37,6 +39,39 @@ object UnitConverter {
     fun formatDistance(canonicalKm: Double, unit: DistanceUnit): String =
         "${formatDistanceValue(canonicalKm, unit)} ${unit.symbol}"
 
+    fun paceToDisplaySecondsPerUnit(canonicalSecondsPerKm: Double, unit: DistanceUnit): Double {
+        require(canonicalSecondsPerKm.isFinite() && canonicalSecondsPerKm > 0.0) {
+            "Pace value must be finite and positive, got $canonicalSecondsPerKm"
+        }
+        return if (unit.kmPerUnit == 1.0) {
+            canonicalSecondsPerKm
+        } else {
+            canonicalSecondsPerKm * unit.kmPerUnit
+        }
+    }
+
+    fun formatPaceValue(canonicalSecondsPerKm: Double, unit: DistanceUnit): String {
+        val displaySeconds = paceToDisplaySecondsPerUnit(canonicalSecondsPerKm, unit)
+            .roundToLong()
+            .coerceAtLeast(1L)
+        return formatDurationClock(displaySeconds)
+    }
+
+    fun formatPace(canonicalSecondsPerKm: Double, unit: DistanceUnit): String =
+        "${formatPaceValue(canonicalSecondsPerKm, unit)} /${unit.symbol}"
+
+    fun formatDurationClock(totalSeconds: Long): String {
+        val safeSeconds = totalSeconds.coerceAtLeast(0L)
+        val hours = safeSeconds / 3_600L
+        val minutes = (safeSeconds % 3_600L) / 60L
+        val seconds = safeSeconds % 60L
+        return if (hours > 0L) {
+            String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            String.format(Locale.US, "%02d:%02d", minutes, seconds)
+        }
+    }
+
     private fun toDisplay(canonicalValue: Double, canonicalPerUnit: Double): Double =
         convert(canonicalValue) { value ->
             if (canonicalPerUnit == 1.0) value else value / canonicalPerUnit
@@ -55,7 +90,7 @@ object UnitConverter {
         return transform(value)
     }
 
-    private fun formatDecimal(value: Double, maxDecimals: Int = 2): String {
+    fun formatDecimal(value: Double, maxDecimals: Int = 2): String {
         val rounded = BigDecimal.valueOf(value).setScale(maxDecimals, RoundingMode.HALF_UP)
         return if (rounded.compareTo(BigDecimal.ZERO) == 0) {
             "0"

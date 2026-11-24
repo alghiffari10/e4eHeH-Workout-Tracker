@@ -42,12 +42,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.e4eheh.e4ehehworkout.domain.unit.UnitConverter
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamColors
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamMotion
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamShapes
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryLargeStyle
 import com.e4eheh.e4ehehworkout.ui.theme.ArkhamTelemetryStyle
-import java.util.Locale
 
 /** Full-screen obsidian HUD backdrop with subtle Batcomputer grid and scanline texture. */
 @Composable
@@ -503,17 +503,8 @@ fun ArkhamTopHeader(
 }
 
 /** Formats a non-negative elapsed duration in seconds as MM:SS or HH:MM:SS. */
-fun formatElapsedDuration(totalSeconds: Long): String {
-    val safeSeconds = totalSeconds.coerceAtLeast(0L)
-    val hours = safeSeconds / 3_600L
-    val minutes = (safeSeconds % 3_600L) / 60L
-    val seconds = safeSeconds % 60L
-    return if (hours > 0L) {
-        String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
-    } else {
-        String.format(Locale.US, "%02d:%02d", minutes, seconds)
-    }
-}
+fun formatElapsedDuration(totalSeconds: Long): String =
+    UnitConverter.formatDurationClock(totalSeconds)
 
 /** Formats a duration in seconds compactly for Routine telemetry badges (e.g. 45m, 1h 15m, 30s). */
 fun formatCompactDuration(totalSeconds: Long): String {
